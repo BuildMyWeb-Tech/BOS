@@ -53,6 +53,13 @@ export function notFound(resource = 'Resource'): NextResponse {
   );
 }
 
+export function conflict(error: string): NextResponse {
+  return NextResponse.json(
+    { success: false, error } satisfies ApiError,
+    { status: 409 }
+  );
+}
+
 export function serverError(error: unknown): NextResponse {
   const message = error instanceof Error ? error.message : 'Internal server error';
   console.error('[BOS API Error]', error);
