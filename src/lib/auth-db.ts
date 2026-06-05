@@ -3,12 +3,13 @@
 // Database helpers for authentication.
 // Separated from auth.ts intentionally:
 //   auth.ts    = pure JWT logic (no DB, Edge-runtime safe)
-//   auth-db.ts = DB queries used during login / token refresh
+//   auth-db.ts = DB queries used during login / token refresh / vendor approval
 //
 // These functions are called ONLY from API route handlers (Node.js runtime).
 
 import prisma from '@/lib/prisma';
 import type { UserRole, JwtPayload } from '@/lib/auth';
+import bcrypt from 'bcryptjs';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -35,8 +36,7 @@ export interface UserWithRole extends DbUser {
  * tenantId = null → looks for super admin (platform-level user).
  *
  * Uses findFirst (not findUnique) because @@unique([email, tenantId])
- * cannot be used with null in Prisma's where clause — same NULL issue
- * we fixed in seed.ts.
+ * cannot be used with null in Prisma's where clause.
  */
 export async function findUserByEmail(
   email: string,
@@ -60,8 +60,6 @@ export async function findUserByEmail(
 /**
  * Get all permission codes for a user via their role assignments.
  * Returns a flat deduplicated array of permission code strings.
- *
- * Example: ["booking.create", "booking.view", "product.edit"]
  */
 export async function getUserPermissions(userId: string): Promise<string[]> {
   const assignments = await prisma.userRoleAssign.findMany({
@@ -81,14 +79,12 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
     a.role.permissions.map(rp => rp.permission.code)
   );
 
-  // Deduplicate — a user could have multiple roles with overlapping permissions
   return [...new Set(codes)];
 }
 
 /**
  * Get the primary role name for a user.
  * Priority: SUPER_ADMIN > VENDOR_OWNER > STAFF > CUSTOMER
- * A user should only have one system role, but this handles edge cases.
  */
 export async function getUserRole(userId: string): Promise<UserRole> {
   const assignments = await prisma.userRoleAssign.findMany({
@@ -97,20 +93,17 @@ export async function getUserRole(userId: string): Promise<UserRole> {
   });
 
   const roleNames = assignments.map(a => a.role.name);
-
   const PRIORITY: UserRole[] = ['SUPER_ADMIN', 'VENDOR_OWNER', 'STAFF', 'CUSTOMER'];
 
   for (const role of PRIORITY) {
     if (roleNames.includes(role)) return role;
   }
 
-  // Default: customer (safest fallback)
   return 'CUSTOMER';
 }
 
 /**
  * Fetch user + role + permissions in one operation.
- * Used by login and token refresh.
  */
 export async function getUserWithPermissions(
   userId: string
@@ -152,7 +145,6 @@ export async function buildJwtPayload(
 
 /**
  * Verify tenant is approved and active.
- * Returns the tenant or null if not valid.
  */
 export async function verifyTenantActive(
   tenantId: string
@@ -162,14 +154,76 @@ export async function verifyTenantActive(
     select: { id: true, name: true, slug: true, status: true, isActive: true, modules: true },
   });
 
-  if (!tenant || !tenant.isActive || tenant.status !== 'APPROVED') {
-    return null;
-  }
+  if (!tenant || !tenant.isActive || tenant.status !== 'APPROVED') return null;
 
   return {
     id:      tenant.id,
     name:    tenant.name,
     slug:    tenant.slug,
     modules: (tenant.modules as Record<string, boolean>) ?? {},
+  };
+}
+
+/**
+ * Create a VENDOR_OWNER user for an approved tenant.
+ * Called inside the approval transaction in PATCH /super-admin/vendors/[id]/approve.
+ *
+ * Steps (run inside caller's transaction):
+ *   1. Hash password
+ *   2. Create User record
+ *   3. Assign VENDOR_OWNER system role
+ *
+ * Returns the created user (DbUser shape).
+ */
+export async function createVendorOwnerUser(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  opts: {
+    name:        string;
+    email:       string;
+    password:    string;
+    phone?:      string | null;
+    tenantId:    string;
+  }
+): Promise<DbUser> {
+  const passwordHash = await bcrypt.hash(opts.password, 12);
+
+  const user = await tx.user.create({
+    data: {
+      name:         opts.name,
+      email:        opts.email,
+      phone:        opts.phone ?? null,
+      passwordHash,
+      tenantId:     opts.tenantId,
+      isActive:     true,
+    },
+  });
+
+  // Get the VENDOR_OWNER system role
+  const vendorOwnerRole = await tx.role.findFirst({
+    where: { name: 'VENDOR_OWNER', tenantId: null },
+    select: { id: true },
+  });
+
+  if (!vendorOwnerRole) {
+    throw new Error('VENDOR_OWNER role not found. Run npm run db:seed');
+  }
+
+  await tx.userRoleAssign.create({
+    data: {
+      userId:   user.id,
+      roleId:   vendorOwnerRole.id,
+      tenantId: opts.tenantId,
+    },
+  });
+
+  return {
+    id:           user.id,
+    name:         user.name,
+    email:        user.email,
+    phone:        user.phone,
+    image:        user.image,
+    passwordHash: user.passwordHash,
+    tenantId:     user.tenantId,
+    isActive:     user.isActive,
   };
 }

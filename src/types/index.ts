@@ -18,7 +18,7 @@ export interface ApiError {
   success: false;
   error: string;
   code?: string;
-  details?: Record<string, string[]>; // field-level validation errors
+  details?: Record<string, string[]>;
 }
 
 export type ApiResponse<T = unknown> = ApiSuccess<T> | ApiError;
@@ -41,6 +41,46 @@ export interface TenantContext {
   isActive: boolean;
   status:   string;
   modules:  TenantModules;
+}
+
+// Mirrors the Prisma TenantStatus enum
+export type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
+// Shape returned in vendor list / detail endpoints
+export interface VendorListItem {
+  id:           string;
+  name:         string;
+  slug:         string;
+  businessType: string;
+  email:        string;
+  phone:        string;
+  address:      string;
+  logo:         string;
+  status:       TenantStatus;
+  isActive:     boolean;
+  modules:      TenantModules;
+  createdAt:    string;
+  ownerEmail:   string | null; // null if not yet approved
+}
+
+// Registration request (matches vendorRegisterSchema)
+export interface VendorRegistrationRequest {
+  businessName:  string;
+  businessType:  string;
+  description?:  string;
+  address:       string;
+  phone:         string;
+  website?:      string;
+  modules: {
+    booking:   boolean;
+    inventory: boolean;
+    billing:   boolean;
+    ecommerce: boolean;
+  };
+  ownerName:     string;
+  ownerEmail:    string;
+  ownerPassword: string;
+  ownerPhone?:   string;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────
@@ -101,9 +141,9 @@ export type BookingStatus =
   | 'RESCHEDULED';
 
 export interface TimeSlot {
-  date:      string; // "YYYY-MM-DD"
-  startTime: string; // "HH:MM"
-  endTime:   string; // "HH:MM"
+  date:      string;
+  startTime: string;
+  endTime:   string;
   available: boolean;
 }
 

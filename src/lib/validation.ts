@@ -48,11 +48,83 @@ export const refreshSchema = z.object({
   refreshToken: z.string({ required_error: 'Refresh token is required' }).min(1),
 });
 
+// ─── Vendor Registration schema ───────────────────────────────────
+// Used by POST /api/tenants/register
+// Owner credentials are collected at registration and used to create
+// the VENDOR_OWNER user account on approval.
+
+export const vendorRegisterSchema = z.object({
+  // Business info
+  businessName: z
+    .string({ required_error: 'Business name is required' })
+    .min(2, 'Business name must be at least 2 characters')
+    .max(100, 'Business name is too long')
+    .trim(),
+
+  businessType: z
+    .string({ required_error: 'Business type is required' })
+    .min(2, 'Business type is required')
+    .max(50, 'Business type is too long')
+    .trim(),
+
+  description: z
+    .string()
+    .max(500, 'Description must be under 500 characters')
+    .trim()
+    .optional(),
+
+  address: z
+    .string({ required_error: 'Address is required' })
+    .min(5, 'Please enter a valid address')
+    .max(300, 'Address is too long')
+    .trim(),
+
+  phone: z
+    .string({ required_error: 'Phone is required' })
+    .regex(/^[0-9+\-\s()]{7,20}$/, 'Invalid phone number'),
+
+  website: z
+    .string()
+    .url('Invalid website URL')
+    .optional()
+    .or(z.literal('')),
+
+  // Module selection — at least one must be enabled
+  modules: z
+    .object({
+      booking:   z.boolean().default(false),
+      inventory: z.boolean().default(false),
+      billing:   z.boolean().default(false),
+      ecommerce: z.boolean().default(false),
+    })
+    .refine(
+      (m) => m.booking || m.inventory || m.billing || m.ecommerce,
+      { message: 'At least one module must be selected' }
+    ),
+
+  // Owner account — created when vendor is approved
+  ownerName:     nameSchema,
+  ownerEmail:    emailSchema,
+  ownerPassword: passwordSchema,
+  ownerPhone:    phoneSchema,
+});
+
+// Used by PATCH /api/super-admin/vendors/[id]/reject
+export const rejectVendorSchema = z.object({
+  reason: z
+    .string({ required_error: 'Rejection reason is required' })
+    .min(10, 'Please provide a reason (min 10 characters)')
+    .max(500, 'Reason is too long')
+    .trim(),
+});
+
 // ─── Type inference from schemas ──────────────────────────────────
 
-export type LoginInput    = z.infer<typeof loginSchema>;
-export type RegisterInput = z.infer<typeof registerSchema>;
-export type RefreshInput  = z.infer<typeof refreshSchema>;
+export type LoginInput          = z.infer<typeof loginSchema>;
+export type RegisterInput       = z.infer<typeof registerSchema>;
+export type RefreshInput        = z.infer<typeof refreshSchema>;
+export type VendorRegisterInput = z.infer<typeof vendorRegisterSchema>;
+export type RejectVendorInput   = z.infer<typeof rejectVendorSchema>;
 
 // ─── Validation helper ────────────────────────────────────────────
 
