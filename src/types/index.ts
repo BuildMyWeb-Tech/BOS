@@ -43,10 +43,8 @@ export interface TenantContext {
   modules:  TenantModules;
 }
 
-// Mirrors the Prisma TenantStatus enum
 export type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
-// Shape returned in vendor list / detail endpoints
 export interface VendorListItem {
   id:           string;
   name:         string;
@@ -60,10 +58,9 @@ export interface VendorListItem {
   isActive:     boolean;
   modules:      TenantModules;
   createdAt:    string;
-  ownerEmail:   string | null; // null if not yet approved
+  ownerEmail:   string | null;
 }
 
-// Registration request (matches vendorRegisterSchema)
 export interface VendorRegistrationRequest {
   businessName:  string;
   businessType:  string;
@@ -81,6 +78,54 @@ export interface VendorRegistrationRequest {
   ownerEmail:    string;
   ownerPassword: string;
   ownerPhone?:   string;
+}
+
+// ─── Staff ────────────────────────────────────────────────────────
+
+// Summary row used in list endpoint
+export interface StaffListItem {
+  id:        string; // Staff.id
+  userId:    string;
+  name:      string;
+  email:     string;
+  phone:     string | null;
+  image:     string;
+  bio:       string | null;
+  isActive:  boolean;
+  permissions: string[];
+  leaveCount:  number; // number of leave dates
+  createdAt:   string;
+}
+
+// Full staff profile returned by GET /api/staff/[id]
+export interface StaffProfile extends StaffListItem {
+  leaveDates:   string[];
+  bookingCount: number;
+}
+
+// ─── Permissions ─────────────────────────────────────────────────
+
+export type PermissionCode =
+  | 'booking.view'   | 'booking.create'   | 'booking.edit'   | 'booking.delete'
+  | 'inventory.view' | 'inventory.manage'
+  | 'product.view'   | 'product.create'   | 'product.edit'   | 'product.delete'
+  | 'billing.view'   | 'billing.create'   | 'billing.refund'
+  | 'sales.view'
+  | 'orders.view'    | 'orders.manage'
+  | 'customer.view'  | 'customer.edit'
+  | 'report.view'    | 'report.export'
+  | 'staff.view'     | 'staff.manage'
+  | 'settings.view'  | 'settings.manage';
+
+// Permissions grouped by module — used in the permissions UI
+export interface PermissionGroup {
+  module:      string;
+  label:       string;
+  permissions: Array<{
+    code:        PermissionCode;
+    description: string;
+    action:      string;
+  }>;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────
@@ -146,20 +191,6 @@ export interface TimeSlot {
   endTime:   string;
   available: boolean;
 }
-
-// ─── Permissions ─────────────────────────────────────────────────
-
-export type PermissionCode =
-  | 'booking.view'   | 'booking.create'   | 'booking.edit'   | 'booking.delete'
-  | 'inventory.view' | 'inventory.manage'
-  | 'product.view'   | 'product.create'   | 'product.edit'   | 'product.delete'
-  | 'billing.view'   | 'billing.create'   | 'billing.refund'
-  | 'sales.view'
-  | 'orders.view'    | 'orders.manage'
-  | 'customer.view'  | 'customer.edit'
-  | 'report.view'    | 'report.export'
-  | 'staff.view'     | 'staff.manage'
-  | 'settings.view'  | 'settings.manage';
 
 // ─── Notifications ────────────────────────────────────────────────
 
