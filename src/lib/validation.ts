@@ -194,3 +194,229 @@ export function validate<T>(
 
   return { data: null, errors };
 }
+
+// ─── Service Category schemas ─────────────────────────────────────
+
+export const serviceCategorySchema = z.object({
+  name: z
+    .string({ required_error: 'Category name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+});
+
+export const updateServiceCategorySchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim()
+    .optional(),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+  isActive: z.boolean().optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Service schemas ──────────────────────────────────────────────
+
+export const serviceSchema = z.object({
+  name: z
+    .string({ required_error: 'Service name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be under 100 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(500, 'Description must be under 500 characters')
+    .trim()
+    .optional(),
+  duration: z
+    .number({ required_error: 'Duration is required' })
+    .int('Duration must be a whole number of minutes')
+    .min(5,    'Minimum duration is 5 minutes')
+    .max(480,  'Maximum duration is 480 minutes (8 hours)'),
+  price: z
+    .number({ required_error: 'Price is required' })
+    .min(0, 'Price cannot be negative')
+    .max(1_000_000, 'Price is too large'),
+  categoryId: z
+    .string()
+    .cuid('Invalid category ID')
+    .optional()
+    .nullable(),
+  image: z
+    .string()
+    .url('Invalid image URL')
+    .optional()
+    .or(z.literal('')),
+});
+
+export const updateServiceSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be under 100 characters')
+    .trim()
+    .optional(),
+  description: z
+    .string()
+    .max(500, 'Description must be under 500 characters')
+    .trim()
+    .optional(),
+  duration: z
+    .number()
+    .int('Duration must be a whole number')
+    .min(5,   'Minimum duration is 5 minutes')
+    .max(480, 'Maximum duration is 480 minutes')
+    .optional(),
+  price: z
+    .number()
+    .min(0, 'Price cannot be negative')
+    .max(1_000_000, 'Price is too large')
+    .optional(),
+  categoryId: z
+    .string()
+    .cuid('Invalid category ID')
+    .optional()
+    .nullable(),
+  isActive: z.boolean().optional(),
+  image: z
+    .string()
+    .url('Invalid image URL')
+    .optional()
+    .or(z.literal('')),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Resource schemas ─────────────────────────────────────────────
+
+const RESOURCE_TYPES = ['court', 'room', 'table', 'equipment', 'other'] as const;
+
+export const resourceSchema = z.object({
+  name: z
+    .string({ required_error: 'Resource name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim(),
+  type: z.enum(RESOURCE_TYPES, {
+    errorMap: () => ({ message: `Type must be one of: ${RESOURCE_TYPES.join(', ')}` }),
+  }),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+});
+
+export const updateResourceSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim()
+    .optional(),
+  type: z.enum(RESOURCE_TYPES).optional(),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+  isActive: z.boolean().optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Slot Config schema ───────────────────────────────────────────
+
+// Time string "HH:MM" — 24-hour format
+const timeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be in HH:MM format (24-hour)');
+
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+
+export const slotConfigSchema = z.object({
+  slotStartTime: timeSchema.default('09:00'),
+  slotEndTime:   timeSchema.default('17:00'),
+  slotDuration: z
+    .number()
+    .int()
+    .refine(v => [15, 30, 45, 60, 90, 120].includes(v), {
+      message: 'Slot duration must be 15, 30, 45, 60, 90, or 120 minutes',
+    })
+    .default(30),
+
+  breakEnabled:   z.boolean().default(false),
+  breakStartTime: timeSchema.optional().nullable(),
+  breakEndTime:   timeSchema.optional().nullable(),
+
+  daysOpen: z
+    .array(z.enum(DAYS_OF_WEEK))
+    .min(1, 'At least one working day must be selected')
+    .default(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']),
+
+  maxAdvanceBookingDays: z
+    .number().int().min(1).max(365)
+    .default(30),
+  minBookingHoursBefore: z
+    .number().int().min(0).max(72)
+    .default(2),
+
+  allowRescheduling:     z.boolean().default(true),
+  rescheduleHoursBefore: z
+    .number().int().min(0).max(168)
+    .default(24),
+
+  advancePaymentRequired: z.boolean().default(true),
+  advancePaymentPercent: z
+    .number()
+    .int()
+    .refine(v => [10, 20, 25, 50, 75, 100].includes(v), {
+      message: 'Advance payment percent must be 10, 20, 25, 50, 75, or 100',
+    })
+    .default(100),
+}).refine(
+  d => {
+    // End time must be after start time
+    if (d.slotStartTime && d.slotEndTime) {
+      return d.slotEndTime > d.slotStartTime;
+    }
+    return true;
+  },
+  { message: 'Slot end time must be after start time', path: ['slotEndTime'] }
+).refine(
+  d => {
+    // If break enabled, both times must be present
+    if (d.breakEnabled) {
+      return !!d.breakStartTime && !!d.breakEndTime;
+    }
+    return true;
+  },
+  { message: 'Break start and end times are required when break is enabled', path: ['breakStartTime'] }
+).refine(
+  d => {
+    // Break times must be within working hours
+    if (d.breakEnabled && d.breakStartTime && d.breakEndTime) {
+      return d.breakStartTime > d.slotStartTime &&
+             d.breakEndTime   < d.slotEndTime   &&
+             d.breakEndTime   > d.breakStartTime;
+    }
+    return true;
+  },
+  { message: 'Break times must be within working hours and break end must be after break start', path: ['breakEndTime'] }
+);
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type ServiceCategoryInput       = z.infer<typeof serviceCategorySchema>;
+export type UpdateServiceCategoryInput = z.infer<typeof updateServiceCategorySchema>;
+export type ServiceInput               = z.infer<typeof serviceSchema>;
+export type UpdateServiceInput         = z.infer<typeof updateServiceSchema>;
+export type ResourceInput              = z.infer<typeof resourceSchema>;
+export type UpdateResourceInput        = z.infer<typeof updateResourceSchema>;
+export type SlotConfigInput            = z.infer<typeof slotConfigSchema>;

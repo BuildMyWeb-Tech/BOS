@@ -237,3 +237,75 @@ export type NotificationType = 'NEW_BOOKING' | 'NEW_ORDER' | 'LOW_STOCK' | 'VEND
 
 export type Nullable<T> = T | null;
 export type Optional<T> = T | undefined;
+
+// ─── Booking Engine Types ─────────────────────────────────────────
+
+export interface ServiceCategory {
+  id:          string;
+  tenantId:    string;
+  name:        string;
+  description: string;
+  isActive:    boolean;
+  serviceCount: number;
+  createdAt:   string;
+}
+
+export interface Service {
+  id:          string;
+  tenantId:    string;
+  categoryId:  string | null;
+  category:    Pick<ServiceCategory, 'id' | 'name'> | null;
+  name:        string;
+  description: string;
+  duration:    number; // minutes
+  price:       number;
+  isActive:    boolean;
+  image:       string;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+export type ResourceType = 'court' | 'room' | 'table' | 'equipment' | 'other';
+
+export interface Resource {
+  id:          string;
+  tenantId:    string;
+  name:        string;
+  type:        ResourceType;
+  description: string | null;
+  isActive:    boolean;
+  bookingCount: number;
+  createdAt:   string;
+}
+
+export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+export interface SlotConfig {
+  id:                     string;
+  tenantId:               string;
+  slotStartTime:          string; // "HH:MM"
+  slotEndTime:            string;
+  slotDuration:           number; // minutes
+  breakEnabled:           boolean;
+  breakStartTime:         string | null;
+  breakEndTime:           string | null;
+  daysOpen:               DayOfWeek[];
+  maxAdvanceBookingDays:  number;
+  minBookingHoursBefore:  number;
+  allowRescheduling:      boolean;
+  rescheduleHoursBefore:  number;
+  advancePaymentRequired: boolean;
+  advancePaymentPercent:  number;
+  createdAt:              string;
+  updatedAt:              string;
+}
+
+// Staff summary used in service/booking contexts (not full StaffProfile)
+export interface StaffSummary {
+  id:       string; // Staff.id
+  userId:   string;
+  name:     string;
+  email:    string;
+  image:    string;
+  isActive: boolean;
+}
