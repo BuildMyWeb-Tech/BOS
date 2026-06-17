@@ -1,9 +1,5 @@
 // src/types/index.ts
-//
-// Core TypeScript types for BOS.
-// These are application-level types. Prisma-generated types live in @prisma/client.
 
-// ─── Re-exports from auth lib ─────────────────────────────────────
 export type { JwtPayload, UserRole } from '@/lib/auth';
 
 // ─── API response shape ───────────────────────────────────────────
@@ -35,12 +31,14 @@ export interface TenantModules {
 }
 
 export interface TenantContext {
-  id:       string;
-  slug:     string;
-  name:     string;
-  isActive: boolean;
-  status:   string;
-  modules:  TenantModules;
+  id:           string;
+  slug:         string;
+  name:         string;
+  logo:         string;
+  businessType: string;
+  isActive:     boolean;
+  status:       string;
+  modules:      TenantModules;
 }
 
 export type TenantStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
@@ -68,39 +66,101 @@ export interface VendorRegistrationRequest {
   address:       string;
   phone:         string;
   website?:      string;
-  modules: {
-    booking:   boolean;
-    inventory: boolean;
-    billing:   boolean;
-    ecommerce: boolean;
-  };
+  modules:       TenantModules;
   ownerName:     string;
   ownerEmail:    string;
   ownerPassword: string;
   ownerPhone?:   string;
 }
 
+// ─── Auth state (client-side) ─────────────────────────────────────
+
+import type { UserRole } from '@/lib/auth';
+
+export interface AuthUser {
+  id:          string;
+  name:        string;
+  email:       string;
+  image:       string;
+  role:        UserRole;
+  tenantId:    string | null;
+  permissions: string[];
+}
+
+export interface AuthState {
+  user:         AuthUser | null;
+  token:        string | null;
+  refreshToken: string | null;
+  isLoading:    boolean;
+  isHydrated:   boolean; // true after localStorage read + /me call complete
+}
+
 // ─── Staff ────────────────────────────────────────────────────────
 
-// Summary row used in list endpoint
 export interface StaffListItem {
-  id:        string; // Staff.id
-  userId:    string;
-  name:      string;
-  email:     string;
-  phone:     string | null;
-  image:     string;
-  bio:       string | null;
-  isActive:  boolean;
+  id:          string;
+  userId:      string;
+  name:        string;
+  email:       string;
+  phone:       string | null;
+  image:       string;
+  bio:         string | null;
+  isActive:    boolean;
   permissions: string[];
-  leaveCount:  number; // number of leave dates
+  leaveCount:  number;
   createdAt:   string;
 }
 
-// Full staff profile returned by GET /api/staff/[id]
 export interface StaffProfile extends StaffListItem {
   leaveDates:   string[];
   bookingCount: number;
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────
+
+export interface DashboardStats {
+  revenue: {
+    today:       number;
+    thisMonth:   number;
+    lastMonth:   number;
+    trend:       number; // % change vs last month
+  };
+  bookings: {
+    today:       number;
+    thisMonth:   number;
+    pending:     number;
+    confirmed:   number;
+  };
+  orders: {
+    today:       number;
+    thisMonth:   number;
+    pending:     number;
+  };
+  customers: {
+    total:       number;
+    newThisMonth: number;
+  };
+  products: {
+    total:       number;
+    lowStock:    number;
+    outOfStock:  number;
+  };
+}
+
+// ─── Navigation ───────────────────────────────────────────────────
+
+export interface NavItem {
+  label:       string;
+  href:        string;
+  icon:        string; // lucide icon name
+  // If set, item only shows when this module is enabled
+  module?:     ModuleFlag;
+  // If set, item only shows when user has one of these permissions
+  permissions?: string[];
+  // If set, item only shows for these roles
+  roles?:      UserRole[];
+  badge?:      number; // notification count
+  children?:   NavItem[];
 }
 
 // ─── Permissions ─────────────────────────────────────────────────
@@ -117,7 +177,6 @@ export type PermissionCode =
   | 'staff.view'     | 'staff.manage'
   | 'settings.view'  | 'settings.manage';
 
-// Permissions grouped by module — used in the permissions UI
 export interface PermissionGroup {
   module:      string;
   label:       string;
@@ -130,30 +189,13 @@ export interface PermissionGroup {
 
 // ─── Auth ─────────────────────────────────────────────────────────
 
-export interface LoginRequest {
-  email:    string;
-  password: string;
-}
+export interface LoginRequest  { email: string; password: string; }
+export interface RegisterRequest { name: string; email: string; password: string; phone?: string; }
 
 export interface LoginResponse {
   token:        string;
   refreshToken: string;
-  user: {
-    id:          string;
-    name:        string;
-    email:       string;
-    role:        string;
-    tenantId:    string | null;
-    permissions: string[];
-    image:       string;
-  };
-}
-
-export interface RegisterRequest {
-  name:     string;
-  email:    string;
-  password: string;
-  phone?:   string;
+  user:         AuthUser & { tenantName?: string; tenantSlug?: string; modules?: TenantModules };
 }
 
 // ─── Pagination ───────────────────────────────────────────────────
@@ -178,12 +220,7 @@ export interface PaginatedResponse<T> {
 
 // ─── Booking ─────────────────────────────────────────────────────
 
-export type BookingStatus =
-  | 'PENDING_PAYMENT'
-  | 'CONFIRMED'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'RESCHEDULED';
+export type BookingStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED';
 
 export interface TimeSlot {
   date:      string;
@@ -194,12 +231,7 @@ export interface TimeSlot {
 
 // ─── Notifications ────────────────────────────────────────────────
 
-export type NotificationType =
-  | 'NEW_BOOKING'
-  | 'NEW_ORDER'
-  | 'LOW_STOCK'
-  | 'VENDOR_APPROVED'
-  | 'SYSTEM';
+export type NotificationType = 'NEW_BOOKING' | 'NEW_ORDER' | 'LOW_STOCK' | 'VENDOR_APPROVED' | 'SYSTEM';
 
 // ─── Utility ─────────────────────────────────────────────────────
 
