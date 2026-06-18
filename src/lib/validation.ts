@@ -420,3 +420,103 @@ export type UpdateServiceInput         = z.infer<typeof updateServiceSchema>;
 export type ResourceInput              = z.infer<typeof resourceSchema>;
 export type UpdateResourceInput        = z.infer<typeof updateResourceSchema>;
 export type SlotConfigInput            = z.infer<typeof slotConfigSchema>;
+
+// ─── Holiday Management schemas ───────────────────────────────────
+
+// POST /api/holidays/blocked-dates
+export const blockedDateSchema = z.object({
+  date: dateStringSchema,
+  reason: z
+    .string()
+    .max(200, 'Reason must be under 200 characters')
+    .trim()
+    .optional(),
+});
+
+// POST /api/holidays/recurring
+const RECURRING_TYPES = ['weekly', 'monthly'] as const;
+
+export const recurringHolidaySchema = z.object({
+  name: z
+    .string({ required_error: 'Holiday name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be under 100 characters')
+    .trim(),
+  type: z.enum(RECURRING_TYPES, {
+    errorMap: () => ({ message: 'Type must be "weekly" or "monthly"' }),
+  }),
+  value: z.string({ required_error: 'Value is required' }),
+}).superRefine((d, ctx) => {
+  if (d.type === 'weekly') {
+    const validDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    if (!validDays.includes(d.value)) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        message: `For weekly holidays, value must be one of: ${validDays.join(', ')}`,
+        path:    ['value'],
+      });
+    }
+  }
+  if (d.type === 'monthly') {
+    const dayNum = Number(d.value);
+    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 31) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        message: 'For monthly holidays, value must be a day of month between 1 and 31',
+        path:    ['value'],
+      });
+    }
+  }
+});
+
+export const updateRecurringHolidaySchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be under 100 characters')
+    .trim()
+    .optional(),
+  type:  z.enum(RECURRING_TYPES).optional(),
+  value: z.string().optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' })
+  .superRefine((d, ctx) => {
+    if (d.type === 'weekly' && d.value) {
+      const validDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      if (!validDays.includes(d.value)) {
+        ctx.addIssue({
+          code:    z.ZodIssueCode.custom,
+          message: `For weekly holidays, value must be one of: ${validDays.join(', ')}`,
+          path:    ['value'],
+        });
+      }
+    }
+    if (d.type === 'monthly' && d.value) {
+      const dayNum = Number(d.value);
+      if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 31) {
+        ctx.addIssue({
+          code:    z.ZodIssueCode.custom,
+          message: 'For monthly holidays, value must be a day of month between 1 and 31',
+          path:    ['value'],
+        });
+      }
+    }
+  });
+
+// POST /api/holidays/special-working-days
+export const specialWorkingDaySchema = z.object({
+  date: dateStringSchema,
+});
+
+// GET /api/holidays/calendar — query param validation
+export const calendarQuerySchema = z.object({
+  year:  z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12), // 1-indexed
+});
+
+// ─── Additional type exports ──────────────────────────────────────
+
+export type BlockedDateInput             = z.infer<typeof blockedDateSchema>;
+export type RecurringHolidayInput        = z.infer<typeof recurringHolidaySchema>;
+export type UpdateRecurringHolidayInput  = z.infer<typeof updateRecurringHolidaySchema>;
+export type SpecialWorkingDayInput       = z.infer<typeof specialWorkingDaySchema>;
+export type CalendarQueryInput           = z.infer<typeof calendarQuerySchema>;

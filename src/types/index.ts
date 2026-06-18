@@ -309,3 +309,46 @@ export interface StaffSummary {
   image:    string;
   isActive: boolean;
 }
+
+// ─── Holiday Management Types ─────────────────────────────────────
+
+export interface BlockedDate {
+  id:        string;
+  tenantId:  string;
+  date:      string; // "YYYY-MM-DD"
+  reason:    string | null;
+  createdAt: string;
+}
+
+export type RecurringHolidayType = 'weekly' | 'monthly';
+
+export interface RecurringHoliday {
+  id:        string;
+  tenantId:  string;
+  name:      string;
+  type:      RecurringHolidayType;
+  value:     string; // "Sunday" for weekly, "25" for monthly
+  createdAt: string;
+}
+
+export interface SpecialWorkingDay {
+  id:        string;
+  tenantId:  string;
+  date:      string; // "YYYY-MM-DD"
+  createdAt: string;
+}
+
+// A single day in the calendar month view — used by booking calendar UI
+export interface CalendarDay {
+  date:        string;  // "YYYY-MM-DD"
+  dayOfWeek:   DayOfWeek;
+  isOpen:      boolean; // final resolved status
+  reason?:     string;  // why closed, e.g. "Weekly holiday: Sunday" or blocked-date reason
+  source?:     'blocked' | 'recurring-weekly' | 'recurring-monthly' | 'not-in-days-open' | 'special-override';
+}
+
+export interface CalendarMonthView {
+  year:  number;
+  month: number; // 1-indexed
+  days:  CalendarDay[];
+}
