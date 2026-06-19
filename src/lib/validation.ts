@@ -632,3 +632,248 @@ export type RescheduleBookingInput    = z.infer<typeof rescheduleBookingSchema>;
 export type RecordPaymentInput        = z.infer<typeof recordPaymentSchema>;
 export type UpdateBookingStatusInput  = z.infer<typeof updateBookingStatusSchema>;
 export type BookingListQueryInput     = z.infer<typeof bookingListQuerySchema>;
+
+// ─── Product Category schemas ─────────────────────────────────────
+
+export const productCategorySchema = z.object({
+  name: z
+    .string({ required_error: 'Category name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+  image: z
+    .string()
+    .url('Invalid image URL')
+    .optional()
+    .or(z.literal('')),
+});
+
+export const updateProductCategorySchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(80, 'Name must be under 80 characters')
+    .trim()
+    .optional(),
+  description: z
+    .string()
+    .max(300, 'Description must be under 300 characters')
+    .trim()
+    .optional(),
+  image: z
+    .string()
+    .url('Invalid image URL')
+    .optional()
+    .or(z.literal('')),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Product Variant sub-schema (used inline in createProductSchema) ──
+
+const variantInputSchema = z.object({
+  size: z
+    .string({ required_error: 'Variant size is required' })
+    .min(1, 'Size cannot be empty')
+    .max(50, 'Size must be under 50 characters')
+    .trim(),
+  price: z
+    .number({ required_error: 'Variant price is required' })
+    .min(0, 'Price cannot be negative')
+    .max(1_000_000, 'Price is too large'),
+  barcode: z
+    .string()
+    .max(100, 'Barcode must be under 100 characters')
+    .trim()
+    .optional(),
+});
+
+// ─── Product schemas ──────────────────────────────────────────────
+
+export const createProductSchema = z.object({
+  name: z
+    .string({ required_error: 'Product name is required' })
+    .min(2, 'Name must be at least 2 characters')
+    .max(150, 'Name must be under 150 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(2000, 'Description must be under 2000 characters')
+    .trim()
+    .optional(),
+  // mrp is the base/no-variant price. Required only when no variants are supplied.
+  mrp: z
+    .number()
+    .min(0, 'MRP cannot be negative')
+    .max(10_000_000, 'MRP is too large')
+    .optional(),
+  images: z
+    .array(z.string().url('Each image must be a valid URL'))
+    .max(10, 'Maximum 10 images allowed')
+    .optional()
+    .default([]),
+  categoryId: z
+    .string()
+    .cuid('Invalid category ID')
+    .optional()
+    .nullable(),
+  sku: z
+    .string()
+    .max(100, 'SKU must be under 100 characters')
+    .trim()
+    .optional(),
+  keyFeatures: z
+    .array(z.string().max(200))
+    .max(20, 'Maximum 20 key features allowed')
+    .optional()
+    .default([]),
+  // Optional variants — if provided, mrp becomes informational only;
+  // actual sellable prices come from each variant.
+  variants: z
+    .array(variantInputSchema)
+    .max(50, 'Maximum 50 variants allowed')
+    .optional(),
+  // Optional initial stock receipt — creates the first ProductBatch.
+  initialQuantity: z
+    .number()
+    .int('Initial quantity must be a whole number')
+    .min(0, 'Initial quantity cannot be negative')
+    .optional(),
+  lowStockThreshold: z
+    .number()
+    .int('Low stock threshold must be a whole number')
+    .min(0, 'Low stock threshold cannot be negative')
+    .optional()
+    .default(10),
+}).refine(
+  d => d.mrp !== undefined || (d.variants && d.variants.length > 0),
+  { message: 'Either mrp or at least one variant must be provided', path: ['mrp'] }
+).refine(
+  d => {
+    // initialQuantity only makes sense for a product with NO variants
+    // (variant-level stock is added separately via the batches endpoint per variant)
+    if (d.initialQuantity !== undefined && d.variants && d.variants.length > 0) return false;
+    return true;
+  },
+  { message: 'initialQuantity cannot be set when variants are provided — add stock per-variant via the batches endpoint', path: ['initialQuantity'] }
+);
+
+export const updateProductSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(150, 'Name must be under 150 characters')
+    .trim()
+    .optional(),
+  description: z
+    .string()
+    .max(2000, 'Description must be under 2000 characters')
+    .trim()
+    .optional(),
+  mrp: z
+    .number()
+    .min(0, 'MRP cannot be negative')
+    .max(10_000_000, 'MRP is too large')
+    .optional(),
+  images: z
+    .array(z.string().url('Each image must be a valid URL'))
+    .max(10, 'Maximum 10 images allowed')
+    .optional(),
+  categoryId: z
+    .string()
+    .cuid('Invalid category ID')
+    .optional()
+    .nullable(),
+  sku: z
+    .string()
+    .max(100, 'SKU must be under 100 characters')
+    .trim()
+    .optional(),
+  keyFeatures: z
+    .array(z.string().max(200))
+    .max(20, 'Maximum 20 key features allowed')
+    .optional(),
+  inStock: z.boolean().optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// GET /api/products — query filters
+const STOCK_FILTERS = ['in_stock', 'low_stock', 'out_of_stock'] as const;
+
+export const productListQuerySchema = z.object({
+  categoryId: z.string().cuid('Invalid categoryId').optional(),
+  stockStatus: z.enum(STOCK_FILTERS).optional(),
+});
+
+// ─── Product Variant management (add/update on existing product) ──
+
+export const addVariantSchema = variantInputSchema;
+
+export const updateVariantSchema = z.object({
+  size: z
+    .string()
+    .min(1, 'Size cannot be empty')
+    .max(50, 'Size must be under 50 characters')
+    .trim()
+    .optional(),
+  price: z
+    .number()
+    .min(0, 'Price cannot be negative')
+    .max(1_000_000, 'Price is too large')
+    .optional(),
+  barcode: z
+    .string()
+    .max(100, 'Barcode must be under 100 characters')
+    .trim()
+    .optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Product Batch (stock receipt) schemas ────────────────────────
+
+export const createBatchSchema = z.object({
+  variantId: z.string().cuid('Invalid variantId').optional().nullable(),
+  batchNumber: z
+    .string()
+    .max(100, 'Batch number must be under 100 characters')
+    .trim()
+    .optional(),
+  expiryDate: dateStringSchema.optional(),
+  quantity: z
+    .number({ required_error: 'Quantity is required' })
+    .int('Quantity must be a whole number')
+    .positive('Quantity must be greater than 0'),
+});
+
+// ─── Inventory adjustment schema ──────────────────────────────────
+
+const ADJUSTMENT_REASONS = ['damaged', 'lost', 'correction', 'returned', 'other'] as const;
+
+export const adjustInventorySchema = z.object({
+  // Positive to add stock, negative to remove. Cannot be zero.
+  delta: z
+    .number({ required_error: 'delta is required' })
+    .int('delta must be a whole number')
+    .refine(v => v !== 0, { message: 'delta cannot be zero' }),
+  reason: z.enum(ADJUSTMENT_REASONS, {
+    errorMap: () => ({ message: `Reason must be one of: ${ADJUSTMENT_REASONS.join(', ')}` }),
+  }),
+  note: z
+    .string()
+    .max(300, 'Note must be under 300 characters')
+    .trim()
+    .optional(),
+});
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type ProductCategoryInput       = z.infer<typeof productCategorySchema>;
+export type UpdateProductCategoryInput = z.infer<typeof updateProductCategorySchema>;
+export type CreateProductInput         = z.infer<typeof createProductSchema>;
+export type UpdateProductInput         = z.infer<typeof updateProductSchema>;
+export type ProductListQueryInput      = z.infer<typeof productListQuerySchema>;
+export type AddVariantInput            = z.infer<typeof addVariantSchema>;
+export type UpdateVariantInput         = z.infer<typeof updateVariantSchema>;
+export type CreateBatchInput           = z.infer<typeof createBatchSchema>;
+export type AdjustInventoryInput       = z.infer<typeof adjustInventorySchema>;

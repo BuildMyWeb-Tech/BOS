@@ -439,3 +439,71 @@ export interface BookingListItem {
   serviceNames: string[];
   createdAt:    string;
 }
+
+// ─── Inventory / Product Types ─────────────────────────────────────
+
+export interface ProductCategoryItem {
+  id:           string;
+  name:         string;
+  description:  string;
+  image:        string;
+  productCount: number;
+  createdAt:    string;
+}
+
+export interface ProductVariantItem {
+  id:        string;
+  productId: string;
+  size:      string;
+  price:     number;
+  barcode:   string | null;
+  stock:     number; // denormalized, kept in sync from batches
+}
+
+export interface ProductBatchItem {
+  id:           string;
+  productId:    string;
+  variantId:    string | null;
+  batchNumber:  string | null;
+  expiryDate:   string | null;
+  quantity:     number; // originally received
+  remainingQty: number; // current remaining
+  createdAt:    string;
+}
+
+export type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
+
+export interface ProductListItem {
+  id:           string;
+  name:         string;
+  mrp:          number;
+  images:       string[];
+  categoryId:   string | null;
+  categoryName: string | null;
+  sku:          string | null;
+  inStock:      boolean;
+  hasVariants:  boolean;
+  totalStock:   number; // from Inventory.quantity (or summed variant stock)
+  lowStock:     number; // threshold
+  stockStatus:  StockStatus;
+  createdAt:    string;
+}
+
+export interface ProductDetail extends ProductListItem {
+  description: string;
+  keyFeatures: string[];
+  variants:    ProductVariantItem[];
+  batches:     ProductBatchItem[];
+}
+
+export type AdjustmentReason = 'damaged' | 'lost' | 'correction' | 'returned' | 'other';
+
+export interface InventoryListItem {
+  productId:    string;
+  productName:  string;
+  sku:          string | null;
+  quantity:     number;
+  lowStock:     number;
+  stockStatus:  StockStatus;
+  updatedAt:    string;
+}
