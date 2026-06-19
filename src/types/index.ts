@@ -352,3 +352,26 @@ export interface CalendarMonthView {
   month: number; // 1-indexed
   days:  CalendarDay[];
 }
+
+// ─── Slot Engine Types ─────────────────────────────────────────────
+
+export interface AvailableSlot {
+  startTime: string; // "HH:MM"
+  endTime:   string; // "HH:MM"
+  available: boolean;
+  staffId?:  string | null;
+}
+
+export interface DaySlotAvailability {
+  date:           string; // "YYYY-MM-DD"
+  isOpen:          boolean; // from calendar engine
+  closedReason?:   string;
+  slots:           AvailableSlot[];
+  availableCount:  number;
+}
+
+export interface RangeSlotAvailability {
+  date:           string;
+  isOpen:          boolean;
+  availableCount: number;
+}

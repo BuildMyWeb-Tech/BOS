@@ -520,3 +520,35 @@ export type RecurringHolidayInput        = z.infer<typeof recurringHolidaySchema
 export type UpdateRecurringHolidayInput  = z.infer<typeof updateRecurringHolidaySchema>;
 export type SpecialWorkingDayInput       = z.infer<typeof specialWorkingDaySchema>;
 export type CalendarQueryInput           = z.infer<typeof calendarQuerySchema>;
+
+// ─── Availability / Slot Engine schemas ───────────────────────────
+
+// GET /api/booking/availability — query params
+export const availabilityQuerySchema = z.object({
+  serviceId: z.string({ required_error: 'serviceId is required' }).cuid('Invalid serviceId'),
+  staffId:   z.string().cuid('Invalid staffId').optional(),
+  date:      dateStringSchema,
+});
+
+// GET /api/booking/availability/range — query params
+export const availabilityRangeQuerySchema = z.object({
+  serviceId: z.string({ required_error: 'serviceId is required' }).cuid('Invalid serviceId'),
+  staffId:   z.string().cuid('Invalid staffId').optional(),
+  from:      dateStringSchema,
+  to:        dateStringSchema,
+}).refine(
+  d => d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+).refine(
+  d => {
+    // Cap range span to 90 days to bound the work done per request
+    const fromDate = new Date(d.from);
+    const toDate   = new Date(d.to);
+    const diffDays = (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 90;
+  },
+  { message: 'Date range cannot exceed 90 days', path: ['to'] }
+);
+
+export type AvailabilityQueryInput      = z.infer<typeof availabilityQuerySchema>;
+export type AvailabilityRangeQueryInput = z.infer<typeof availabilityRangeQuerySchema>;
