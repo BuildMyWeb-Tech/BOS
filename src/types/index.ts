@@ -375,3 +375,67 @@ export interface RangeSlotAvailability {
   isOpen:          boolean;
   availableCount: number;
 }
+
+// ─── Booking Lifecycle Types ───────────────────────────────────────
+
+export type CancelledBy = 'customer' | 'staff' | 'system';
+export type PaymentMethodType = 'cash' | 'upi' | 'card' | 'razorpay';
+export type PaymentStatus = 'pending' | 'completed' | 'failed';
+
+export interface BookingServiceItem {
+  id:        string;
+  serviceId: string;
+  name:      string; // snapshot
+  price:     number; // snapshot
+}
+
+export interface BookingPaymentItem {
+  id:                 string;
+  amount:             number;
+  method:             PaymentMethodType;
+  status:             PaymentStatus;
+  razorpayOrderId?:   string | null;
+  razorpayPaymentId?: string | null;
+  createdAt:          string;
+}
+
+export interface BookingDetail {
+  id:                 string;
+  tenantId:           string;
+  customerId:         string;
+  customerName?:      string;
+  customerEmail?:      string;
+  staffId:            string | null;
+  staffName?:          string | null;
+  resourceId:         string | null;
+  resourceName?:       string | null;
+  date:               string;
+  startTime:          string;
+  endTime:            string;
+  status:             BookingStatus;
+  totalAmount:        number;
+  paidAmount:         number;
+  remainingAmount:    number;
+  paymentPercent:     number;
+  notes:              string | null;
+  cancellationReason: string | null;
+  cancelledBy:        CancelledBy | null;
+  services:           BookingServiceItem[];
+  payments:           BookingPaymentItem[];
+  createdAt:          string;
+  updatedAt:          string;
+}
+
+export interface BookingListItem {
+  id:           string;
+  customerName: string;
+  staffName:    string | null;
+  date:         string;
+  startTime:    string;
+  endTime:      string;
+  status:       BookingStatus;
+  totalAmount:  number;
+  paidAmount:   number;
+  serviceNames: string[];
+  createdAt:    string;
+}

@@ -552,3 +552,83 @@ export const availabilityRangeQuerySchema = z.object({
 
 export type AvailabilityQueryInput      = z.infer<typeof availabilityQuerySchema>;
 export type AvailabilityRangeQueryInput = z.infer<typeof availabilityRangeQuerySchema>;
+
+// ─── Booking Creation / Lifecycle schemas ─────────────────────────
+
+const timeSchemaBooking = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be in HH:MM format (24-hour)');
+
+// POST /api/bookings
+export const createBookingSchema = z.object({
+  serviceIds: z
+    .array(z.string().cuid('Invalid service ID'), { required_error: 'serviceIds is required' })
+    .min(1, 'At least one service must be selected'),
+  staffId:    z.string().cuid('Invalid staffId').optional().nullable(),
+  resourceId: z.string().cuid('Invalid resourceId').optional().nullable(),
+  date:       dateStringSchema,
+  startTime:  timeSchemaBooking,
+  notes: z
+    .string()
+    .max(500, 'Notes must be under 500 characters')
+    .trim()
+    .optional(),
+});
+
+// PATCH /api/bookings/[id]/cancel
+export const cancelBookingSchema = z.object({
+  reason: z
+    .string()
+    .max(300, 'Reason must be under 300 characters')
+    .trim()
+    .optional(),
+});
+
+// PATCH /api/bookings/[id]/reschedule
+export const rescheduleBookingSchema = z.object({
+  date:      dateStringSchema,
+  startTime: timeSchemaBooking,
+});
+
+// POST /api/bookings/[id]/payment
+const PAYMENT_METHODS = ['cash', 'upi', 'card', 'razorpay'] as const;
+
+export const recordPaymentSchema = z.object({
+  amount: z
+    .number({ required_error: 'Amount is required' })
+    .positive('Amount must be greater than 0'),
+  method: z.enum(PAYMENT_METHODS, {
+    errorMap: () => ({ message: `Method must be one of: ${PAYMENT_METHODS.join(', ')}` }),
+  }),
+  razorpayOrderId:   z.string().optional(),
+  razorpayPaymentId: z.string().optional(),
+}).refine(
+  d => d.method !== 'razorpay' || (!!d.razorpayOrderId && !!d.razorpayPaymentId),
+  { message: 'razorpayOrderId and razorpayPaymentId are required for razorpay payments', path: ['razorpayPaymentId'] }
+);
+
+// PATCH /api/bookings/[id]/status
+const BOOKING_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'RESCHEDULED'] as const;
+
+export const updateBookingStatusSchema = z.object({
+  status: z.enum(BOOKING_STATUSES, {
+    errorMap: () => ({ message: `Status must be one of: ${BOOKING_STATUSES.join(', ')}` }),
+  }),
+});
+
+// GET /api/bookings — query filters
+export const bookingListQuerySchema = z.object({
+  status:   z.enum(BOOKING_STATUSES).optional(),
+  staffId:  z.string().cuid('Invalid staffId').optional(),
+  from:     dateStringSchema.optional(),
+  to:       dateStringSchema.optional(),
+});
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type CreateBookingInput        = z.infer<typeof createBookingSchema>;
+export type CancelBookingInput        = z.infer<typeof cancelBookingSchema>;
+export type RescheduleBookingInput    = z.infer<typeof rescheduleBookingSchema>;
+export type RecordPaymentInput        = z.infer<typeof recordPaymentSchema>;
+export type UpdateBookingStatusInput  = z.infer<typeof updateBookingStatusSchema>;
+export type BookingListQueryInput     = z.infer<typeof bookingListQuerySchema>;
