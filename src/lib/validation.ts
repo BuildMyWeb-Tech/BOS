@@ -877,3 +877,111 @@ export type AddVariantInput            = z.infer<typeof addVariantSchema>;
 export type UpdateVariantInput         = z.infer<typeof updateVariantSchema>;
 export type CreateBatchInput           = z.infer<typeof createBatchSchema>;
 export type AdjustInventoryInput       = z.infer<typeof adjustInventorySchema>;
+
+// ─── Billing / POS schemas ─────────────────────────────────────────
+
+const billLineItemSchema = z.object({
+  productId: z.string({ required_error: 'productId is required' }).cuid('Invalid productId'),
+  variantId: z.string().cuid('Invalid variantId').optional().nullable(),
+  quantity: z
+    .number({ required_error: 'Quantity is required' })
+    .int('Quantity must be a whole number')
+    .positive('Quantity must be greater than 0'),
+  // Per-line discount, flat amount (not percent) — applied before tax
+  discount: z
+    .number()
+    .min(0, 'Discount cannot be negative')
+    .optional()
+    .default(0),
+});
+
+const BILL_PAYMENT_MODES = ['CASH', 'UPI', 'CARD', 'SPLIT'] as const;
+
+// POST /api/bills
+export const createBillSchema = z.object({
+  items: z
+    .array(billLineItemSchema, { required_error: 'items is required' })
+    .min(1, 'At least one item is required'),
+  // Bill-level discount, flat amount, applied to the subtotal AFTER line-item discounts
+  billDiscount: z
+    .number()
+    .min(0, 'Discount cannot be negative')
+    .optional()
+    .default(0),
+  paymentMode: z.enum(BILL_PAYMENT_MODES, {
+    errorMap: () => ({ message: `Payment mode must be one of: ${BILL_PAYMENT_MODES.join(', ')}` }),
+  }),
+  paidAmount: z
+    .number()
+    .min(0, 'Paid amount cannot be negative')
+    .optional(),
+  note: z
+    .string()
+    .max(500, 'Note must be under 500 characters')
+    .trim()
+    .optional(),
+});
+
+// GET /api/bills — query filters
+export const billListQuerySchema = z.object({
+  from:   dateStringSchema.optional(),
+  to:     dateStringSchema.optional(),
+}).refine(
+  d => !(d.from && d.to) || d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+);
+
+// ─── Tenant Settings schemas ───────────────────────────────────────
+
+const TAX_TYPES = ['SINGLE', 'SPLIT'] as const;
+
+export const updateTenantSettingsSchema = z.object({
+  gstNumber: z
+    .string()
+    .max(50, 'GST number must be under 50 characters')
+    .trim()
+    .optional()
+    .nullable(),
+  taxType: z.enum(TAX_TYPES, {
+    errorMap: () => ({ message: 'taxType must be "SINGLE" or "SPLIT"' }),
+  }).optional(),
+  taxPercent: z
+    .number()
+    .min(0, 'Tax percent cannot be negative')
+    .max(100, 'Tax percent cannot exceed 100')
+    .optional(),
+  cgst: z
+    .number()
+    .min(0, 'CGST cannot be negative')
+    .max(100, 'CGST cannot exceed 100')
+    .optional(),
+  sgst: z
+    .number()
+    .min(0, 'SGST cannot be negative')
+    .max(100, 'SGST cannot exceed 100')
+    .optional(),
+  currency: z
+    .string()
+    .min(1, 'Currency cannot be empty')
+    .max(10, 'Currency code must be under 10 characters')
+    .optional(),
+  showStoreName: z.boolean().optional(),
+  showGST: z.boolean().optional(),
+  footerMessage: z
+    .string()
+    .max(200, 'Footer message must be under 200 characters')
+    .trim()
+    .optional()
+    .nullable(),
+  defaultLowStock: z
+    .number()
+    .int('defaultLowStock must be a whole number')
+    .min(0, 'defaultLowStock cannot be negative')
+    .optional(),
+}).refine(d => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type CreateBillInput            = z.infer<typeof createBillSchema>;
+export type BillListQueryInput         = z.infer<typeof billListQuerySchema>;
+export type UpdateTenantSettingsInput  = z.infer<typeof updateTenantSettingsSchema>;

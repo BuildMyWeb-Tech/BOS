@@ -507,3 +507,65 @@ export interface InventoryListItem {
   stockStatus:  StockStatus;
   updatedAt:    string;
 }
+
+// ─── Billing / POS Types ───────────────────────────────────────────
+
+export type BillPaymentMode = 'CASH' | 'UPI' | 'CARD' | 'SPLIT';
+
+export interface BillItemDetail {
+  id:        string;
+  productId: string;
+  variantId: string | null;
+  batchId:   string | null;
+  name:      string;  // snapshot
+  size:      string | null; // snapshot, variant size if applicable
+  price:     number;  // snapshot, unit price
+  quantity:  number;
+  discount:  number;
+  total:     number;
+}
+
+export interface BillDetail {
+  id:           string;
+  tenantId:     string;
+  billNumber:   string;
+  subtotal:     number;
+  discount:     number;
+  taxAmount:    number;
+  total:        number;
+  paymentMode:  BillPaymentMode;
+  note:         string | null;
+  paidAmount:   number | null;
+  changeAmount: number | null;
+  employeeId:   string | null;
+  employeeName?: string | null;
+  items:        BillItemDetail[];
+  createdAt:    string;
+}
+
+export interface BillListItem {
+  id:           string;
+  billNumber:   string;
+  total:        number;
+  paymentMode:  BillPaymentMode;
+  itemCount:    number;
+  employeeName: string | null;
+  createdAt:    string;
+}
+
+export interface TenantSettingsDetail {
+  id:              string;
+  tenantId:        string;
+  gstNumber:       string | null;
+  taxType:         'SINGLE' | 'SPLIT';
+  taxPercent:      number;
+  cgst:            number;
+  sgst:            number;
+  currency:        string;
+  showStoreName:   boolean;
+  showGST:         boolean;
+  footerMessage:   string | null;
+  defaultLowStock: number;
+  createdAt:       string;
+  updatedAt:       string;
+}
