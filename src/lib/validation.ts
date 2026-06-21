@@ -985,3 +985,121 @@ export const updateTenantSettingsSchema = z.object({
 export type CreateBillInput            = z.infer<typeof createBillSchema>;
 export type BillListQueryInput         = z.infer<typeof billListQuerySchema>;
 export type UpdateTenantSettingsInput  = z.infer<typeof updateTenantSettingsSchema>;
+
+// ─── Cart schemas ───────────────────────────────────────────────────
+
+export const addCartItemSchema = z.object({
+  productId: z.string({ required_error: 'productId is required' }).cuid('Invalid productId'),
+  variantId: z.string().cuid('Invalid variantId').optional().nullable(),
+  quantity: z
+    .number({ required_error: 'Quantity is required' })
+    .int('Quantity must be a whole number')
+    .positive('Quantity must be greater than 0')
+    .max(999, 'Quantity is too large')
+    .default(1),
+});
+
+export const updateCartItemSchema = z.object({
+  quantity: z
+    .number({ required_error: 'Quantity is required' })
+    .int('Quantity must be a whole number')
+    .positive('Quantity must be greater than 0')
+    .max(999, 'Quantity is too large'),
+});
+
+// ─── Address schemas ────────────────────────────────────────────────
+
+export const createAddressSchema = z.object({
+  name: nameSchema,
+  email: emailSchema,
+  street: z
+    .string({ required_error: 'Street address is required' })
+    .min(5, 'Street address must be at least 5 characters')
+    .max(300, 'Street address is too long')
+    .trim(),
+  city: z
+    .string({ required_error: 'City is required' })
+    .min(2, 'City must be at least 2 characters')
+    .max(100, 'City is too long')
+    .trim(),
+  state: z
+    .string({ required_error: 'State is required' })
+    .min(2, 'State must be at least 2 characters')
+    .max(100, 'State is too long')
+    .trim(),
+  zip: z
+    .string({ required_error: 'ZIP/postal code is required' })
+    .min(3, 'ZIP/postal code is too short')
+    .max(20, 'ZIP/postal code is too long')
+    .trim(),
+  country: z
+    .string({ required_error: 'Country is required' })
+    .min(2, 'Country must be at least 2 characters')
+    .max(100, 'Country is too long')
+    .trim(),
+  phone: z
+    .string({ required_error: 'Phone is required' })
+    .regex(/^[0-9+\-\s()]{7,20}$/, 'Invalid phone number'),
+});
+
+// ─── Order / Checkout schemas ───────────────────────────────────────
+
+export const checkoutSchema = z.object({
+  addressId: z.string({ required_error: 'addressId is required' }).cuid('Invalid addressId'),
+  paymentMethod: z.enum(['COD', 'RAZORPAY', 'CASH', 'UPI', 'CARD'], {
+    errorMap: () => ({ message: 'Invalid payment method' }),
+  }),
+  couponCode: z
+    .string()
+    .max(50, 'Coupon code is too long')
+    .trim()
+    .optional(),
+});
+
+const ORDER_STATUSES = [
+  'ORDER_PLACED', 'PROCESSING', 'SHIPPED', 'DELIVERED',
+  'CONFIRMED', 'CANCELLED', 'RETURN_REQUESTED', 'RETURNED', 'REFUNDED',
+] as const;
+
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(ORDER_STATUSES, {
+    errorMap: () => ({ message: `Status must be one of: ${ORDER_STATUSES.join(', ')}` }),
+  }),
+  note: z
+    .string()
+    .max(300, 'Note must be under 300 characters')
+    .trim()
+    .optional(),
+});
+
+export const orderListQuerySchema = z.object({
+  status: z.enum(ORDER_STATUSES).optional(),
+  from:   dateStringSchema.optional(),
+  to:     dateStringSchema.optional(),
+}).refine(
+  d => !(d.from && d.to) || d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+);
+
+// ─── Coupon validation schema ────────────────────────────────────────
+
+export const validateCouponSchema = z.object({
+  code: z
+    .string({ required_error: 'Coupon code is required' })
+    .min(1, 'Coupon code cannot be empty')
+    .max(50, 'Coupon code is too long')
+    .trim(),
+  cartTotal: z
+    .number({ required_error: 'cartTotal is required' })
+    .min(0, 'cartTotal cannot be negative'),
+});
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type AddCartItemInput        = z.infer<typeof addCartItemSchema>;
+export type UpdateCartItemInput     = z.infer<typeof updateCartItemSchema>;
+export type CreateAddressInput      = z.infer<typeof createAddressSchema>;
+export type CheckoutInput           = z.infer<typeof checkoutSchema>;
+export type UpdateOrderStatusInput  = z.infer<typeof updateOrderStatusSchema>;
+export type OrderListQueryInput     = z.infer<typeof orderListQuerySchema>;
+export type ValidateCouponInput     = z.infer<typeof validateCouponSchema>;

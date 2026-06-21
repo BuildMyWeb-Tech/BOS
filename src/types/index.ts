@@ -222,6 +222,17 @@ export interface PaginatedResponse<T> {
 
 export type BookingStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED';
 
+export type OrderStatus =
+  | 'ORDER_PLACED'
+  | 'PROCESSING'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'CONFIRMED'
+  | 'CANCELLED'
+  | 'RETURN_REQUESTED'
+  | 'RETURNED'
+  | 'REFUNDED';
+
 export interface TimeSlot {
   date:      string;
   startTime: string;
@@ -568,4 +579,107 @@ export interface TenantSettingsDetail {
   defaultLowStock: number;
   createdAt:       string;
   updatedAt:       string;
+}
+
+// ─── Ecommerce / Storefront Types ───────────────────────────────────
+
+export interface StorefrontProduct {
+  id:           string;
+  name:         string;
+  description:  string;
+  mrp:          number;
+  images:       string[];
+  categoryId:   string | null;
+  categoryName: string | null;
+  hasVariants:  boolean;
+  variants:     Array<{ id: string; size: string; price: number; inStock: boolean }>;
+  inStock:      boolean;
+}
+
+export interface CartItemDetail {
+  id:           string;
+  productId:    string;
+  productName:  string;
+  productImage: string | null;
+  variantId:    string | null;
+  variantSize:  string | null;
+  unitPrice:    number;
+  quantity:     number;
+  lineTotal:    number;
+  available:    boolean; // false if stock no longer covers requested quantity
+}
+
+export interface CartDetail {
+  id:        string;
+  items:     CartItemDetail[];
+  itemCount: number;
+  subtotal:  number;
+}
+
+export interface AddressDetail {
+  id:        string;
+  name:      string;
+  email:     string;
+  street:    string;
+  city:      string;
+  state:     string;
+  zip:       string;
+  country:   string;
+  phone:     string;
+  createdAt: string;
+}
+
+export type OrderPaymentMethod = 'COD' | 'RAZORPAY' | 'CASH' | 'UPI' | 'CARD';
+
+export interface OrderItemDetail {
+  productId:   string;
+  productName: string;
+  quantity:    number;
+  price:       number; // unit price snapshot
+  lineTotal:   number;
+}
+
+export interface OrderTimelineEntry {
+  id:        string;
+  status:    OrderStatus;
+  changedBy: string;
+  note:      string | null;
+  createdAt: string;
+}
+
+export interface OrderDetail {
+  id:            string;
+  tenantId:      string;
+  userId:        string;
+  customerName?: string;
+  addressId:     string;
+  address?:      AddressDetail;
+  total:         number;
+  status:        OrderStatus;
+  isPaid:        boolean;
+  paymentMethod: OrderPaymentMethod;
+  isCouponUsed:  boolean;
+  couponCode?:   string | null;
+  items:         OrderItemDetail[];
+  timeline:      OrderTimelineEntry[];
+  createdAt:     string;
+  updatedAt:     string;
+}
+
+export interface OrderListItem {
+  id:            string;
+  customerName:  string;
+  total:         number;
+  status:        OrderStatus;
+  isPaid:        boolean;
+  itemCount:     number;
+  createdAt:     string;
+}
+
+export interface CouponValidationResult {
+  valid:        boolean;
+  reason?:      string;
+  code?:        string;
+  discount?:    number;
+  discountedTotal?: number;
 }

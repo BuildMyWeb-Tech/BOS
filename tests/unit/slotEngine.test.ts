@@ -274,9 +274,18 @@ describe('getAvailableSlots — calendar engine integration (holidays)', () => {
   });
 
   test('special working day forces isOpen:true on a normally closed weekend', async () => {
-    mockBaseData({ specialWorkingDays: [{ date: '2026-06-20' }] });
+    // Use a date far in the future so this test never goes stale relative
+    // to wall-clock time (minBookingHoursBefore cutoff would otherwise
+    // zero out all slots once "now" passes the hardcoded date).
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 2);
+    // Find the next Saturday from there
+    while (future.getDay() !== 6) future.setDate(future.getDate() + 1);
+    const dateStr = future.toISOString().slice(0, 10);
+
+    mockBaseData({ specialWorkingDays: [{ date: dateStr }] });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-20', serviceId: 'svc1', // Saturday
+      tenantId: 't1', date: dateStr, serviceId: 'svc1',
     });
     expect(result.isOpen).toBe(true);
     expect(result.availableCount).toBeGreaterThan(0);
