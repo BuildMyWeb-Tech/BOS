@@ -683,3 +683,89 @@ export interface CouponValidationResult {
   discount?:    number;
   discountedTotal?: number;
 }
+
+// ─── Reporting Types ─────────────────────────────────────────────────
+
+export type ReportBucket = 'day' | 'week' | 'month';
+
+export interface RevenueBucketPoint {
+  bucketLabel: string;  // e.g. "2026-06-15" for day, "2026-W24" for week, "2026-06" for month
+  bookingRevenue: number;
+  billingRevenue: number;
+  orderRevenue:   number;
+  total:          number;
+}
+
+export interface RevenueReport {
+  from:    string;
+  to:      string;
+  bucket:  ReportBucket;
+  points:  RevenueBucketPoint[];
+  summary: {
+    totalRevenue:    number;
+    bookingRevenue:  number;
+    billingRevenue:  number;
+    orderRevenue:    number;
+    growthPercent:   number | null; // null if no prior-period comparison possible
+  };
+}
+
+export interface TopSellingItem {
+  id:       string;
+  name:     string;
+  quantity: number;
+  revenue:  number;
+}
+
+export interface SalesSummaryReport {
+  from: string;
+  to:   string;
+  totalTransactions: number;
+  averageOrderValue: number;
+  topProducts: TopSellingItem[];
+  topServices: TopSellingItem[];
+}
+
+export interface TopCustomer {
+  userId:      string;
+  name:        string;
+  email:       string;
+  totalSpend:  number;
+  orderCount:  number;
+}
+
+export interface CustomerReport {
+  from: string;
+  to:   string;
+  newCustomers:       number;
+  returningCustomers: number;
+  topCustomers:       TopCustomer[];
+}
+
+export interface StaffPerformanceItem {
+  staffId:        string;
+  name:           string;
+  bookingCount:   number;
+  completedCount: number;
+  revenue:        number;
+}
+
+export interface StaffPerformanceReport {
+  from:  string;
+  to:    string;
+  staff: StaffPerformanceItem[];
+}
+
+export interface DeadStockItem {
+  productId:   string;
+  productName: string;
+  quantity:    number;
+  lastSaleDate: string | null; // null = never sold
+}
+
+export interface InventoryReport {
+  totalStockValue: number; // sum of (mrp or variant price) * quantity on hand
+  lowStockCount:   number;
+  outOfStockCount: number;
+  deadStock:       DeadStockItem[];
+}

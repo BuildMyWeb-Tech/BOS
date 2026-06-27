@@ -1103,3 +1103,77 @@ export type CheckoutInput           = z.infer<typeof checkoutSchema>;
 export type UpdateOrderStatusInput  = z.infer<typeof updateOrderStatusSchema>;
 export type OrderListQueryInput     = z.infer<typeof orderListQuerySchema>;
 export type ValidateCouponInput     = z.infer<typeof validateCouponSchema>;
+
+// ─── Reporting schemas ──────────────────────────────────────────────
+
+const REPORT_BUCKETS = ['day', 'week', 'month'] as const;
+
+export const revenueReportQuerySchema = z.object({
+  from:   dateStringSchema,
+  to:     dateStringSchema,
+  bucket: z.enum(REPORT_BUCKETS).optional().default('day'),
+}).refine(
+  d => d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+).refine(
+  d => {
+    const diffDays = (new Date(d.to).getTime() - new Date(d.from).getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 366;
+  },
+  { message: 'Date range cannot exceed 366 days', path: ['to'] }
+);
+
+export const salesSummaryQuerySchema = z.object({
+  from:  dateStringSchema,
+  to:    dateStringSchema,
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+}).refine(
+  d => d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+);
+
+export const customerReportQuerySchema = z.object({
+  from:  dateStringSchema,
+  to:    dateStringSchema,
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+}).refine(
+  d => d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+);
+
+export const staffPerformanceQuerySchema = z.object({
+  from: dateStringSchema,
+  to:   dateStringSchema,
+}).refine(
+  d => d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+);
+
+export const inventoryReportQuerySchema = z.object({
+  deadStockDays: z.coerce.number().int().min(1).max(365).optional().default(90),
+});
+
+const REPORT_TYPES = ['revenue', 'sales-summary', 'customers', 'staff-performance', 'inventory'] as const;
+
+export const exportReportSchema = z.object({
+  reportType: z.enum(REPORT_TYPES, {
+    errorMap: () => ({ message: `reportType must be one of: ${REPORT_TYPES.join(', ')}` }),
+  }),
+  from: dateStringSchema.optional(),
+  to:   dateStringSchema.optional(),
+}).refine(
+  d => !(d.from && d.to) || d.to >= d.from,
+  { message: '"to" date must not be before "from" date', path: ['to'] }
+).refine(
+  d => d.reportType === 'inventory' || (!!d.from && !!d.to),
+  { message: 'from and to are required for this report type', path: ['from'] }
+);
+
+// ─── Type exports ─────────────────────────────────────────────────
+
+export type RevenueReportQueryInput     = z.infer<typeof revenueReportQuerySchema>;
+export type SalesSummaryQueryInput      = z.infer<typeof salesSummaryQuerySchema>;
+export type CustomerReportQueryInput    = z.infer<typeof customerReportQuerySchema>;
+export type StaffPerformanceQueryInput  = z.infer<typeof staffPerformanceQuerySchema>;
+export type InventoryReportQueryInput   = z.infer<typeof inventoryReportQuerySchema>;
+export type ExportReportInput           = z.infer<typeof exportReportSchema>;
