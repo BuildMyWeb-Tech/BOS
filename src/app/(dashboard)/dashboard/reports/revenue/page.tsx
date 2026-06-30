@@ -149,7 +149,7 @@ export default function RevenueReportPage() {
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false}
                 tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
               <Tooltip
-                formatter={(value: number, name: string) => [`₹${value.toLocaleString('en-IN')}`, name]}
+                formatter={(value, name) => [`₹${Number(value ?? 0).toLocaleString('en-IN')}`, name]}
                 labelStyle={{ fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="total"          stroke="#4f46e5" strokeWidth={2} dot={false} name="Total"   />
