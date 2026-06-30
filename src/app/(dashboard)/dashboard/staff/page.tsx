@@ -101,7 +101,7 @@ export default function StaffPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {['Name', 'Contact', 'Permissions', 'Bookings', 'Status', ''].map(h => (
+                  {['Name', 'Contact', 'Permissions', 'Leave days', 'Status', ''].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -130,9 +130,9 @@ export default function StaffPage() {
                     <td className="px-5 py-4">
                       <span className="text-gray-600">{s.permissions.length} permission{s.permissions.length !== 1 ? 's' : ''}</span>
                     </td>
-                    {/* Booking count */}
+                    {/* Leave days */}
                     <td className="px-5 py-4 text-gray-600">
-                      {s.bookingCount ?? 0}
+                      {s.leaveCount}
                     </td>
                     {/* Status */}
                     <td className="px-5 py-4">
