@@ -2,12 +2,12 @@
 // src/components/layout/Sidebar.tsx
 
 import { useState, useCallback } from 'react';
-import Link       from 'next/link';
+import Link          from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Calendar, Package, Receipt, ShoppingBag,
   Users, BarChart2, Settings, ChevronLeft, LogOut,
-  UserCog, Store, Bell, Menu,
+  UserCog, Store, Scissors, Armchair, ShoppingCart,
 } from 'lucide-react';
 import { useAuth }        from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -21,65 +21,83 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Dashboard',
     href:  '/dashboard',
     icon:  'dashboard',
-    // Always visible
   },
+  // ── Booking module ──
   {
-    label:   'Bookings',
-    href:    '/dashboard/bookings',
-    icon:    'calendar',
-    module:  'booking',
+    label:       'Bookings',
+    href:        '/dashboard/bookings',
+    icon:        'calendar',
+    module:      'booking',
     permissions: ['booking.view'],
   },
   {
-    label:   'Customers',
-    href:    '/dashboard/customers',
-    icon:    'users',
-    permissions: ['customer.view'],
+    label:       'Services',
+    href:        '/dashboard/services',
+    icon:        'scissors',
+    module:      'booking',
+    permissions: ['booking.view'],
   },
   {
-    label:   'Products',
-    href:    '/dashboard/products',
-    icon:    'package',
-    module:  'inventory',
+    label:       'Resources',
+    href:        '/dashboard/resources',
+    icon:        'armchair',
+    module:      'booking',
+    permissions: ['booking.view'],
+  },
+  // ── Inventory module ──
+  {
+    label:       'Products',
+    href:        '/dashboard/inventory/products',
+    icon:        'package',
+    module:      'inventory',
     permissions: ['product.view'],
   },
   {
-    label:   'Inventory',
-    href:    '/dashboard/inventory',
-    icon:    'package',
-    module:  'inventory',
+    label:       'Inventory',
+    href:        '/dashboard/inventory',
+    icon:        'inventory',
+    module:      'inventory',
     permissions: ['inventory.view'],
   },
+  // ── Billing module ──
   {
-    label:   'Billing / POS',
-    href:    '/dashboard/billing',
-    icon:    'receipt',
-    module:  'billing',
+    label:       'Billing / POS',
+    href:        '/dashboard/billing',
+    icon:        'receipt',
+    module:      'billing',
     permissions: ['billing.view'],
   },
+  // ── Ecommerce module ──
   {
-    label:   'Orders',
-    href:    '/dashboard/orders',
-    icon:    'shopping',
-    module:  'ecommerce',
+    label:       'Orders',
+    href:        '/dashboard/orders',
+    icon:        'shopping',
+    module:      'ecommerce',
     permissions: ['orders.view'],
   },
+  // ── Cross-module ──
   {
-    label:   'Reports',
-    href:    '/dashboard/reports',
-    icon:    'chart',
+    label:       'Customers',
+    href:        '/dashboard/customers',
+    icon:        'users',
+    permissions: ['customer.view'],
+  },
+  {
+    label:       'Reports',
+    href:        '/dashboard/reports',
+    icon:        'chart',
     permissions: ['report.view'],
   },
   {
-    label:   'Staff',
-    href:    '/dashboard/staff',
-    icon:    'usercog',
+    label:       'Staff',
+    href:        '/dashboard/staff',
+    icon:        'usercog',
     permissions: ['staff.view'],
   },
   {
-    label:   'Settings',
-    href:    '/dashboard/settings',
-    icon:    'settings',
+    label:       'Settings',
+    href:        '/dashboard/settings',
+    icon:        'settings',
     permissions: ['settings.view'],
   },
 ];
@@ -97,7 +115,10 @@ function NavIcon({ name, className }: { name: string; className?: string }) {
   switch (name) {
     case 'dashboard': return <LayoutDashboard className={cls} />;
     case 'calendar':  return <Calendar        className={cls} />;
+    case 'scissors':  return <Scissors        className={cls} />;
+    case 'armchair':  return <Armchair        className={cls} />;
     case 'package':   return <Package         className={cls} />;
+    case 'inventory': return <ShoppingCart    className={cls} />;
     case 'receipt':   return <Receipt         className={cls} />;
     case 'shopping':  return <ShoppingBag     className={cls} />;
     case 'users':     return <Users           className={cls} />;
@@ -121,12 +142,11 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose }: SidebarProps) {
   const pathname         = usePathname();
   const { user, logout } = useAuth();
-  const { can, canAny }  = usePermissions();
+  const { canAny }       = usePermissions();
   const { isEnabled }    = useModules();
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  // Filter nav items by module + permission
   const visibleItems = (isSuperAdmin ? SUPER_ADMIN_ITEMS : NAV_ITEMS).filter(item => {
     if (item.module && !isEnabled(item.module)) return false;
     if (item.permissions?.length && !canAny(item.permissions)) return false;
@@ -141,13 +161,9 @@ export default function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClo
 
   return (
     <>
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="sidebar-overlay" onClick={onMobileClose} />
-      )}
+      {mobileOpen && <div className="sidebar-overlay" onClick={onMobileClose} />}
 
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
-
         {/* Logo + collapse toggle */}
         <div className="flex items-center justify-between px-4 py-5 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
           {!collapsed && (
@@ -163,29 +179,20 @@ export default function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClo
               <span className="text-white font-bold text-xs">B</span>
             </div>
           )}
-          <button
-            onClick={onCollapse}
+          <button onClick={onCollapse}
             className="hidden md:flex items-center justify-center w-7 h-7 rounded-md hover:bg-white/10 transition-colors text-indigo-300"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <ChevronLeft
-              size={16}
-              className="transition-transform duration-300"
-              style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
-            />
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <ChevronLeft size={16} className="transition-transform duration-300"
+              style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }} />
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           {visibleItems.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => onMobileClose()}
+            <Link key={item.href} href={item.href} onClick={onMobileClose}
               className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
-              title={collapsed ? item.label : undefined}
-            >
+              title={collapsed ? item.label : undefined}>
               <NavIcon name={item.icon} />
               <span className="nav-label">{item.label}</span>
               {item.badge ? (
@@ -199,11 +206,7 @@ export default function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClo
 
         {/* User footer */}
         <div className="px-3 pb-4 border-t pt-3 space-y-1" style={{ borderColor: 'var(--sidebar-border)' }}>
-          <button
-            onClick={logout}
-            className="nav-item w-full"
-            title={collapsed ? 'Logout' : undefined}
-          >
+          <button onClick={logout} className="nav-item w-full" title={collapsed ? 'Logout' : undefined}>
             <LogOut size={18} className="nav-icon flex-shrink-0" />
             <span className="nav-label">Logout</span>
           </button>
