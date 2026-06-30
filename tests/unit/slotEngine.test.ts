@@ -25,6 +25,19 @@ import { generateDaySlots, getAvailableSlots, isSlotAvailable } from '@/lib/book
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 
+// Tests below need a date that is (a) always in the future relative to
+// wall-clock time, so the minBookingHoursBefore cutoff never filters it
+// out, and (b) a Monday, since several tests rely on the default
+// daysOpen mock (['Monday', ...]) and leave-date/blocked-date scenarios
+// that assume a weekday. Computed once at module load rather than
+// hardcoded, so this file never goes stale again.
+const TEST_DATE = (() => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 2);
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1); // 1 = Monday
+  return d.toISOString().slice(0, 10);
+})();
+
 // ─────────────────────────────────────────────────────────────────
 // generateDaySlots — pure function, no mocks needed
 // ─────────────────────────────────────────────────────────────────
@@ -172,7 +185,7 @@ describe('getAvailableSlots — service / closure checks', () => {
   test('returns isOpen:false with reason if service not found', async () => {
     mockBaseData({ service: null });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'bad-svc',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'bad-svc',
     });
     expect(result.isOpen).toBe(false);
     expect(result.closedReason).toMatch(/Service not found/);
@@ -191,7 +204,7 @@ describe('getAvailableSlots — service / closure checks', () => {
   test('returns isOpen:true with slots for a normal open weekday', async () => {
     mockBaseData();
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1', // Monday
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1', // Monday
     });
     expect(result.isOpen).toBe(true);
     expect(result.availableCount).toBeGreaterThan(0);
@@ -202,9 +215,9 @@ describe('getAvailableSlots — staff leave and inactive checks', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('returns no slots if requested staff is on leave that day', async () => {
-    mockBaseData({ staff: { leaveDates: ['2026-06-22'], isActive: true } });
+    mockBaseData({ staff: { leaveDates: [TEST_DATE], isActive: true } });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1', staffId: 'staff1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1', staffId: 'staff1',
     });
     expect(result.isOpen).toBe(true);
     expect(result.closedReason).toMatch(/on leave/);
@@ -214,7 +227,7 @@ describe('getAvailableSlots — staff leave and inactive checks', () => {
   test('returns no slots if requested staff is inactive', async () => {
     mockBaseData({ staff: { leaveDates: [], isActive: false } });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1', staffId: 'staff1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1', staffId: 'staff1',
     });
     expect(result.closedReason).toMatch(/inactive/);
     expect(result.slots).toHaveLength(0);
@@ -223,7 +236,7 @@ describe('getAvailableSlots — staff leave and inactive checks', () => {
   test('returns slots normally when staff is active and not on leave', async () => {
     mockBaseData({ staff: { leaveDates: ['2026-06-25'], isActive: true } });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1', staffId: 'staff1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1', staffId: 'staff1',
     });
     expect(result.availableCount).toBeGreaterThan(0);
   });
@@ -235,7 +248,7 @@ describe('getAvailableSlots — booking overlap exclusion', () => {
   test('excludes a slot that exactly matches an existing booking', async () => {
     mockBaseData({ bookings: [{ startTime: '10:00', endTime: '10:30', staffId: null }] });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1',
     });
     expect(result.slots.some(s => s.startTime === '10:00')).toBe(false);
   });
@@ -246,7 +259,7 @@ describe('getAvailableSlots — booking overlap exclusion', () => {
       bookings: [{ startTime: '10:00', endTime: '11:00', staffId: null }],
     });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1',
     });
     expect(result.slots.some(s => s.startTime === '09:30')).toBe(true);
     expect(result.slots.some(s => s.startTime === '10:30')).toBe(false);
@@ -256,7 +269,7 @@ describe('getAvailableSlots — booking overlap exclusion', () => {
   test('does not exclude slots on days with no bookings', async () => {
     mockBaseData({ bookings: [] });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1',
     });
     expect(result.availableCount).toBeGreaterThan(0);
   });
@@ -266,9 +279,9 @@ describe('getAvailableSlots — calendar engine integration (holidays)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('blocked date results in isOpen:false even on a normally open weekday', async () => {
-    mockBaseData({ blockedDates: [{ date: '2026-06-22' }] });
+    mockBaseData({ blockedDates: [{ date: TEST_DATE }] });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1',
     });
     expect(result.isOpen).toBe(false);
   });
@@ -294,7 +307,7 @@ describe('getAvailableSlots — calendar engine integration (holidays)', () => {
   test('recurring weekly holiday closes that weekday', async () => {
     mockBaseData({ recurringHolidays: [{ type: 'weekly', value: 'Monday' }] });
     const result = await getAvailableSlots({
-      tenantId: 't1', date: '2026-06-22', serviceId: 'svc1', // Monday
+      tenantId: 't1', date: TEST_DATE, serviceId: 'svc1', // Monday
     });
     expect(result.isOpen).toBe(false);
   });
@@ -310,7 +323,7 @@ describe('isSlotAvailable', () => {
   test('returns available:true for a free slot', async () => {
     mockBaseData();
     const result = await isSlotAvailable({
-      tenantId: 't1', date: '2026-06-22', startTime: '10:00', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, startTime: '10:00', serviceId: 'svc1',
     });
     expect(result.available).toBe(true);
   });
@@ -318,16 +331,16 @@ describe('isSlotAvailable', () => {
   test('returns available:false if the slot is already booked', async () => {
     mockBaseData({ bookings: [{ startTime: '10:00', endTime: '10:30', staffId: null }] });
     const result = await isSlotAvailable({
-      tenantId: 't1', date: '2026-06-22', startTime: '10:00', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, startTime: '10:00', serviceId: 'svc1',
     });
     expect(result.available).toBe(false);
     expect(result.reason).toMatch(/no longer available/);
   });
 
   test('returns available:false with closedReason if the date is closed', async () => {
-    mockBaseData({ blockedDates: [{ date: '2026-06-22' }] });
+    mockBaseData({ blockedDates: [{ date: TEST_DATE }] });
     const result = await isSlotAvailable({
-      tenantId: 't1', date: '2026-06-22', startTime: '10:00', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, startTime: '10:00', serviceId: 'svc1',
     });
     expect(result.available).toBe(false);
     expect(result.reason).toBeDefined();
@@ -336,7 +349,7 @@ describe('isSlotAvailable', () => {
   test('returns available:false for a startTime that does not exist in the grid', async () => {
     mockBaseData();
     const result = await isSlotAvailable({
-      tenantId: 't1', date: '2026-06-22', startTime: '10:07', serviceId: 'svc1',
+      tenantId: 't1', date: TEST_DATE, startTime: '10:07', serviceId: 'svc1',
     });
     expect(result.available).toBe(false);
   });

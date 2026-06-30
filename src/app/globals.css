@@ -188,3 +188,93 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+
+
+/* ─── FE-1: Tables & Cards ───────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.table-container {
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.table-container table { width: 100%; font-size: 0.875rem; }
+
+.table-container thead tr {
+  background: #f9fafb;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table-container th {
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.table-container td {
+  padding: 14px 20px;
+  border-bottom: 1px solid #f9fafb;
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+
+.table-container tbody tr:last-child td { border-bottom: none; }
+.table-container tbody tr:hover { background: #fafafa; }
+
+/* ─── Forms ───────────────────────────────────────────────────── */
+.form-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: 5px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-input.error { border-color: var(--color-danger); }
+
+.form-error {
+  font-size: 0.75rem;
+  color: var(--color-danger);
+  margin-top: 4px;
+}
+
+/* ─── Content area padding ────────────────────────────────────── */
+.content-area {
+  padding: 24px 32px;
+  flex: 1;
+}
+@media (max-width: 640px) {
+  .content-area { padding: 16px; }
+}
