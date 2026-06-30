@@ -251,7 +251,8 @@ export async function POST(request: NextRequest) {
           isPaid:        data.paymentMethod !== 'COD',
           paymentMethod: data.paymentMethod,
           isCouponUsed:  !!data.couponCode,
-          coupon:        couponSnapshot,
+          coupon:      couponSnapshot as Prisma.InputJsonValue,
+
         },
       });
 

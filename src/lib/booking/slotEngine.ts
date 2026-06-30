@@ -124,7 +124,8 @@ export async function getAvailableSlots(
       prisma.slotConfig.findUnique({ where: { tenantId } }),
       prisma.service.findFirst({ where: { id: serviceId, tenantId, isActive: true } }),
       prisma.blockedDate.findMany({ where: { tenantId, date }, select: { date: true } }),
-      prisma.recurringHoliday.findMany({ where: { tenantId }, select: { type: true, value: true } }),
+      prisma.recurringHoliday.findMany({ where: { tenantId }, select: { type: true, value: true } })
+        .then(rows => rows.map(r => ({ ...r, type: r.type as 'weekly' | 'monthly' }))),
       prisma.specialWorkingDay.findMany({ where: { tenantId, date }, select: { date: true } }),
       staffId
         ? prisma.staff.findFirst({ where: { id: staffId, tenantId }, select: { leaveDates: true, isActive: true } })

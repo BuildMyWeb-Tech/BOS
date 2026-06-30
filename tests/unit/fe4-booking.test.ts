@@ -30,7 +30,7 @@ describe('validateStep2', () => {
 
 type BookingStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED';
 
-function statusVariant(s: BookingStatus): string {
+function bookingStatusVariant(s: BookingStatus): string {
   return s === 'CONFIRMED'       ? 'success'
        : s === 'COMPLETED'       ? 'info'
        : s === 'CANCELLED'       ? 'danger'
@@ -47,12 +47,12 @@ function isModifiable(s: BookingStatus): boolean {
   return s === 'PENDING_PAYMENT' || s === 'CONFIRMED';
 }
 
-describe('statusVariant', () => {
-  test('CONFIRMED → success',       () => expect(statusVariant('CONFIRMED')).toBe('success'));
-  test('COMPLETED → info',          () => expect(statusVariant('COMPLETED')).toBe('info'));
-  test('CANCELLED → danger',        () => expect(statusVariant('CANCELLED')).toBe('danger'));
-  test('PENDING_PAYMENT → warning', () => expect(statusVariant('PENDING_PAYMENT')).toBe('warning'));
-  test('RESCHEDULED → neutral',     () => expect(statusVariant('RESCHEDULED')).toBe('neutral'));
+describe('bookingStatusVariant', () => {
+  test('CONFIRMED → success',       () => expect(bookingStatusVariant('CONFIRMED')).toBe('success'));
+  test('COMPLETED → info',          () => expect(bookingStatusVariant('COMPLETED')).toBe('info'));
+  test('CANCELLED → danger',        () => expect(bookingStatusVariant('CANCELLED')).toBe('danger'));
+  test('PENDING_PAYMENT → warning', () => expect(bookingStatusVariant('PENDING_PAYMENT')).toBe('warning'));
+  test('RESCHEDULED → neutral',     () => expect(bookingStatusVariant('RESCHEDULED')).toBe('neutral'));
 });
 
 describe('statusLabel', () => {

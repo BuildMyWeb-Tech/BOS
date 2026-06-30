@@ -1,11 +1,11 @@
 // src/app/api/holidays/calendar/route.ts
-// GET /api/holidays/calendar?year=2026&month=6
+// GET /api/holidays/calendar?year=&month=
 //
-// Returns the resolved open/closed status for every day in the
-// requested month, combining: SlotConfig.daysOpen + RecurringHoliday
-// + BlockedDate + SpecialWorkingDay.
+// Returns the resolved calendar month view (open/closed per day) by
+// layering: daysOpen baseline → recurring holidays → blocked dates →
+// special working day overrides. Delegates all the date logic to
+// resolveCalendarMonth() in calendarEngine.ts.
 //
-// This is what the booking calendar UI renders directly.
 // Permission: booking.view
 
 import { NextRequest } from 'next/server';
@@ -14,8 +14,6 @@ import { calendarQuerySchema, validate } from '@/lib/validation';
 import { resolveCalendarMonth } from '@/lib/booking/calendarEngine';
 import prisma from '@/lib/prisma';
 import type { DayOfWeek } from '@/types';
-
-const DEFAULT_DAYS_OPEN: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,46 +34,46 @@ export async function GET(request: NextRequest) {
     });
     if (errors) return badRequest('Validation failed', errors);
 
-    const { year, month } = data;
+    const tenantId = auth.tenantId;
 
-    // Compute month date range for filtering blocked/special dates
-    const monthStr  = String(month).padStart(2, '0');
-    const fromDate   = `${year}-${monthStr}-01`;
-    const lastDay    = new Date(year, month, 0).getDate();
-    const toDate     = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
-
-    // Fetch all data in parallel
-    const [slotConfig, blockedDates, recurringHolidays, specialWorkingDays] = await Promise.all([
-      prisma.slotConfig.findUnique({
-        where:  { tenantId: auth.tenantId },
-        select: { daysOpen: true },
-      }),
+    const [slotConfig, blockedDates, recurringHolidaysRaw, specialWorkingDays] = await Promise.all([
+      prisma.slotConfig.findUnique({ where: { tenantId }, select: { daysOpen: true } }),
       prisma.blockedDate.findMany({
-        where:  { tenantId: auth.tenantId, date: { gte: fromDate, lte: toDate } },
+        where:  { tenantId },
         select: { date: true, reason: true },
       }),
       prisma.recurringHoliday.findMany({
-        where:  { tenantId: auth.tenantId },
+        where:  { tenantId },
         select: { name: true, type: true, value: true },
       }),
       prisma.specialWorkingDay.findMany({
-        where:  { tenantId: auth.tenantId, date: { gte: fromDate, lte: toDate } },
+        where:  { tenantId },
         select: { date: true },
       }),
     ]);
 
-    const daysOpen = (slotConfig?.daysOpen as DayOfWeek[] | undefined) ?? DEFAULT_DAYS_OPEN;
+    // Prisma widens the `type` column to `string` even though only
+    // 'weekly' | 'monthly' are ever written (enforced by
+    // recurringHolidaySchema's Zod validation on the write path) — narrow
+    // it back here at the read boundary rather than weakening the
+    // calendarEngine's input type.
+    const recurringHolidays = recurringHolidaysRaw.map(h => ({
+      ...h,
+      type: h.type as 'weekly' | 'monthly',
+    }));
 
-    const calendarView = resolveCalendarMonth({
-      year,
-      month,
+    const daysOpen = (slotConfig?.daysOpen as DayOfWeek[] | undefined) ?? [];
+
+    const calendar = resolveCalendarMonth({
+      year:  data.year,
+      month: data.month,
       daysOpen,
       blockedDates,
       recurringHolidays,
       specialWorkingDays,
     });
 
-    return ok({ calendar: calendarView });
+    return ok({ calendar });
   } catch (error) {
     return serverError(error);
   }

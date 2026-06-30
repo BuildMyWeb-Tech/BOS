@@ -76,7 +76,8 @@ export async function GET(request: NextRequest) {
 
     const topProducts = rankTopItems(
       Array.from(productMap.entries()).map(([id, v]) => ({ id, ...v })),
-      data.limit
+       data.limit ?? 10
+
     );
 
     // Aggregate services
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     const topServices = rankTopItems(
       Array.from(serviceMap.entries()).map(([id, v]) => ({ id, ...v })),
-      data.limit
+      data.limit ?? 10
     );
 
     const totalTransactions = billCount + orderCount + bookingCount;

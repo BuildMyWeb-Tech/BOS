@@ -120,7 +120,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const topCustomers = rankTopItems(candidates, data.limit).map(c => ({
+      const topCustomers = rankTopItems(candidates, data.limit ?? 10).map(c => ({
+
       userId:     c.id,
       name:       c.name,
       email:      c.email,

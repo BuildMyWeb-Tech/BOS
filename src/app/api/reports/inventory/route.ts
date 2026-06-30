@@ -70,7 +70,8 @@ export async function GET(request: NextRequest) {
 
     // Dead stock: in-stock products with no sale activity in the window
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - data.deadStockDays);
+    cutoff.setDate(cutoff.getDate() - (data.deadStockDays ?? 90));
+
 
     const inStockProducts = productSummaries.filter(p => p.quantity > 0);
 

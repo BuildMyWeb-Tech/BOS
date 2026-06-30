@@ -57,13 +57,13 @@ describe('validateResourceForm', () => {
 
 // ─── GAP 3: Product list filter logic ────────────────────────────
 
-type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
-interface Product { id: string; name: string; sku?: string; categoryId?: string; stockStatus: StockStatus }
+type GapStockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
+interface Product { id: string; name: string; sku?: string; categoryId?: string; stockStatus: GapStockStatus }
 
 function filterProducts(
   products: Product[],
   search: string,
-  stockFilter: StockStatus | 'all',
+  stockFilter: GapStockStatus | 'all',
   catFilter: string
 ): Product[] {
   return products.filter(p => {
@@ -76,7 +76,7 @@ function filterProducts(
 
 describe('filterProducts', () => {
   const products: Product[] = [
-    { id: '1', name: 'Shampoo',     sku: 'SHM-001', categoryId: 'cat1', stockStatus: 'in_stock'     },
+    { id: '1', name: 'Shampoo',     sku: 'SHM-001', categoryId: 'cat1', stockStatus: 'in_stock' as GapStockStatus     },
     { id: '2', name: 'Conditioner', sku: 'CON-001', categoryId: 'cat1', stockStatus: 'low_stock'    },
     { id: '3', name: 'Serum',       sku: 'SER-001', categoryId: 'cat2', stockStatus: 'out_of_stock' },
   ];
@@ -92,11 +92,11 @@ describe('filterProducts', () => {
 
 // ─── GAP 4: Order tracking journey bar ───────────────────────────
 
-type OrderStatus = 'ORDER_PLACED'|'PROCESSING'|'SHIPPED'|'DELIVERED'|'CONFIRMED'|'CANCELLED'|'RETURN_REQUESTED'|'RETURNED'|'REFUNDED';
+type GapOrderStatus = 'ORDER_PLACED'|'PROCESSING'|'SHIPPED'|'DELIVERED'|'CONFIRMED'|'CANCELLED'|'RETURN_REQUESTED'|'RETURNED'|'REFUNDED';
 
-const JOURNEY_STEPS: OrderStatus[] = ['ORDER_PLACED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+const JOURNEY_STEPS: GapOrderStatus[] = ['ORDER_PLACED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
-function getJourneyProgress(status: OrderStatus): { isCancelled: boolean; currentIdx: number } {
+function getJourneyProgress(status: GapOrderStatus): { isCancelled: boolean; currentIdx: number } {
   const isCancelled = ['CANCELLED','RETURN_REQUESTED','RETURNED','REFUNDED'].includes(status);
   const currentIdx  = JOURNEY_STEPS.indexOf(status);
   return { isCancelled, currentIdx };

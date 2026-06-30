@@ -40,27 +40,34 @@ export async function POST(request: NextRequest) {
       update: {},
     });
 
-    const existing = await prisma.cartItem.findUnique({
+    // Prisma's generated WhereUniqueInput for a compound key
+    // (cartId_productId_variantId) types variantId as non-nullable even
+    // though the underlying column is nullable — a known Prisma typing
+    // limitation. findFirst with an explicit equality clause accepts
+    // null directly and behaves identically for our purposes here,
+    // since (cartId, productId, variantId) is still enforced unique by
+    // the DB constraint regardless of which Prisma method reads it.
+    const existing = await prisma.cartItem.findFirst({
       where: {
-        cartId_productId_variantId: {
-          cartId:    cart.id,
-          productId: data.productId,
-          variantId: data.variantId ?? null,
-        },
+        cartId:    cart.id,
+        productId: data.productId,
+        variantId: data.variantId ?? null,
       },
     });
+
+    const quantity = data.quantity ?? 1;
 
     const item = existing
       ? await prisma.cartItem.update({
           where: { id: existing.id },
-          data:  { quantity: existing.quantity + data.quantity },
+          data:  { quantity: existing.quantity + quantity },
         })
       : await prisma.cartItem.create({
           data: {
             cartId:    cart.id,
             productId: data.productId,
             variantId: data.variantId ?? null,
-            quantity:  data.quantity,
+            quantity,
           },
         });
 

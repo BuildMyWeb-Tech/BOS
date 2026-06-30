@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const lineTotal = calculateLineTotal(unitPrice, item.quantity, item.discount);
+      const lineTotal = calculateLineTotal(unitPrice, item.quantity, item.discount ?? 0);
 
       resolvedLines.push({
         productId:    item.productId,
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
         size:         lineSize,
         unitPrice,
         quantity:     item.quantity,
-        lineDiscount: item.discount,
+        lineDiscount: item.discount ?? 0,
         lineTotal,
         deductions,
       });
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
 
     const totals = calculateBillTotals(
       resolvedLines.map(l => l.lineTotal),
-      data.billDiscount,
+      data.billDiscount ?? 0,
       taxSettings
     );
 
