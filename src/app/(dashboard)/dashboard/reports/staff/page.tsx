@@ -90,7 +90,7 @@ export default function StaffReportPage() {
                 tickFormatter={(v: string) => v.split(' ')[0]} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false}
                 tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
+              <Tooltip formatter={(v) => [`₹${Number(v ?? 0).toLocaleString('en-IN')}`, 'Revenue']} />
               <Bar dataKey="revenue" fill="#4f46e5" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>

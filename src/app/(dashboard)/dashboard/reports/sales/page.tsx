@@ -109,7 +109,7 @@ export default function SalesReportPage() {
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={90}
                   tickLine={false} axisLine={false}
                   tickFormatter={(v: string) => v.length > 12 ? v.slice(0,12)+'…' : v} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
+                <Tooltip formatter={(v) => [`₹${Number(v ?? 0).toLocaleString('en-IN')}`, 'Revenue']} />
                 <Bar dataKey="revenue" fill="#4f46e5" radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -130,7 +130,7 @@ export default function SalesReportPage() {
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={90}
                   tickLine={false} axisLine={false}
                   tickFormatter={(v: string) => v.length > 12 ? v.slice(0,12)+'…' : v} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
+                <Tooltip formatter={(v) => [`₹${Number(v ?? 0).toLocaleString('en-IN')}`, 'Revenue']} />
                 <Bar dataKey="revenue" fill="#10b981" radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
