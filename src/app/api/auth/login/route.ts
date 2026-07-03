@@ -1,146 +1,64 @@
 // src/app/api/auth/login/route.ts
 // POST /api/auth/login
 //
-// Handles login for all 4 roles:
-//   SUPER_ADMIN  — email + password, no tenant required
-//   VENDOR_OWNER — email + password, tenant resolved from host header
-//   STAFF        — email + password, tenant resolved from host header
-//   CUSTOMER     — email + password, tenant resolved from host header
-//
-// Response: { token, refreshToken, user }
+// FIX: When no x-tenant-slug header is present (user logging in from the
+// main domain / localhost:3000/login), first try Super Admin lookup,
+// then fall back to searching ALL tenants for the email.
+// This allows vendor owners and staff to log in from the main login page
+// without needing to be on their tenant subdomain.
 
 import { NextRequest } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { signAccessToken, signRefreshToken } from '@/lib/auth';
-import { findUserByEmail, buildJwtPayload, verifyTenantActive } from '@/lib/auth-db';
+import { findUserByEmail, buildJwtPayload } from '@/lib/auth-db';
 import { loginSchema, validate } from '@/lib/validation';
-import {
-  ok,
-  badRequest,
-  unauthorized,
-  forbidden,
-  serverError,
-} from '@/lib/api-helpers';
+import { ok, badRequest, unauthorized, forbidden, serverError } from '@/lib/api-helpers';
 import prisma from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Step 1: Parse and validate body ──────────────────────────
+    // ── Step 1: Parse and validate ────────────────────────────────
     const body = await request.json().catch(() => null);
-
-    if (!body) {
-      return badRequest('Request body is required');
-    }
+    if (!body) return badRequest('Request body is required');
 
     const { data, errors } = validate(loginSchema, body);
-    if (errors) {
-      return badRequest('Validation failed', errors);
-    }
+    if (errors) return badRequest('Validation failed', errors);
 
     const { email, password } = data;
 
-    // ── Step 2: Determine context — Super Admin vs Tenant user ───
-    // The middleware injects x-tenant-slug if the request comes
-    // from a tenant subdomain (acmesalon.localhost:3000).
-    // If absent, we treat this as a Super Admin login attempt.
     const tenantSlug = request.headers.get('x-tenant-slug');
 
-    // ── Step 3: Super Admin login path ───────────────────────────
-    if (!tenantSlug) {
-      const user = await findUserByEmail(email, null); // tenantId = null = super admin
+    // ── Step 2: Tenant subdomain login ────────────────────────────
+    // e.g. buildmyweb.localhost:3000 → middleware sets x-tenant-slug=buildmyweb
+    if (tenantSlug) {
+      const tenant = await prisma.tenant.findUnique({
+        where:  { slug: tenantSlug },
+        select: { id: true, name: true, slug: true, status: true, isActive: true, modules: true },
+      });
 
-      if (!user) {
-        // Generic message — never reveal whether email exists
-        return unauthorized('Invalid email or password');
+      if (!tenant) return badRequest('Tenant not found');
+
+      if (!tenant.isActive || tenant.status !== 'APPROVED') {
+        return forbidden(
+          tenant.status === 'PENDING'
+            ? 'This business is pending approval'
+            : 'This business account is not active'
+        );
       }
 
-      if (!user.isActive) {
-        return forbidden('Account has been deactivated');
-      }
+      const user = await findUserByEmail(email, tenant.id);
+      if (!user) return unauthorized('Invalid email or password');
+      if (!user.isActive) return forbidden('Account deactivated. Contact your administrator.');
 
       const passwordValid = await bcrypt.compare(password, user.passwordHash);
-      if (!passwordValid) {
-        return unauthorized('Invalid email or password');
-      }
+      if (!passwordValid) return unauthorized('Invalid email or password');
 
       const jwtPayload = await buildJwtPayload(user);
-      if (!jwtPayload) {
-        return unauthorized('Account has no role assigned. Contact platform admin.');
-      }
+      if (!jwtPayload) return unauthorized('No role assigned. Contact your administrator.');
 
-      // Super Admin must have SUPER_ADMIN role
-      if (jwtPayload.role !== 'SUPER_ADMIN') {
-        return forbidden('Access denied');
-      }
-
-      const token        = signAccessToken(jwtPayload);
-      const refreshToken = signRefreshToken(user.id);
-
-      return ok(
-        {
-          token,
-          refreshToken,
-          user: {
-            id:          user.id,
-            name:        user.name,
-            email:       user.email,
-            image:       user.image,
-            role:        jwtPayload.role,
-            tenantId:    null,
-            permissions: jwtPayload.permissions,
-          },
-        },
-        'Login successful'
-      );
-    }
-
-    // ── Step 4: Tenant user login path ───────────────────────────
-    // Resolve the tenant from the slug in the header
-    const tenant = await prisma.tenant.findUnique({
-      where:  { slug: tenantSlug },
-      select: { id: true, name: true, slug: true, status: true, isActive: true, modules: true },
-    });
-
-    if (!tenant) {
-      return badRequest('Tenant not found');
-    }
-
-    if (!tenant.isActive || tenant.status !== 'APPROVED') {
-      return forbidden(
-        tenant.status === 'PENDING'
-          ? 'This business is pending approval'
-          : 'This business account is not active'
-      );
-    }
-
-    // Find user within this tenant
-    const user = await findUserByEmail(email, tenant.id);
-
-    if (!user) {
-      return unauthorized('Invalid email or password');
-    }
-
-    if (!user.isActive) {
-      return forbidden('Account has been deactivated. Contact your administrator.');
-    }
-
-    const passwordValid = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordValid) {
-      return unauthorized('Invalid email or password');
-    }
-
-    const jwtPayload = await buildJwtPayload(user);
-    if (!jwtPayload) {
-      return unauthorized('Account has no role assigned. Contact your administrator.');
-    }
-
-    const token        = signAccessToken(jwtPayload);
-    const refreshToken = signRefreshToken(user.id);
-
-    return ok(
-      {
-        token,
-        refreshToken,
+      return ok({
+        token:        signAccessToken(jwtPayload),
+        refreshToken: signRefreshToken(user.id),
         user: {
           id:          user.id,
           name:        user.name,
@@ -153,9 +71,87 @@ export async function POST(request: NextRequest) {
           tenantSlug:  tenant.slug,
           modules:     (tenant.modules as Record<string, boolean>) ?? {},
         },
+      }, 'Login successful');
+    }
+
+    // ── Step 3: Main domain login (no subdomain) ──────────────────
+    // localhost:3000/login or yourdomain.com/login
+    // Try in order:
+    //   (a) Super Admin — tenantId: null
+    //   (b) Any approved tenant user — find by email across all tenants
+
+    // (a) Super Admin attempt
+    const superAdminUser = await findUserByEmail(email, null);
+    if (superAdminUser && superAdminUser.isActive) {
+      const passwordValid = await bcrypt.compare(password, superAdminUser.passwordHash);
+      if (passwordValid) {
+        const jwtPayload = await buildJwtPayload(superAdminUser);
+        if (jwtPayload?.role === 'SUPER_ADMIN') {
+          return ok({
+            token:        signAccessToken(jwtPayload),
+            refreshToken: signRefreshToken(superAdminUser.id),
+            user: {
+              id:          superAdminUser.id,
+              name:        superAdminUser.name,
+              email:       superAdminUser.email,
+              image:       superAdminUser.image,
+              role:        'SUPER_ADMIN',
+              tenantId:    null,
+              permissions: jwtPayload.permissions,
+            },
+          }, 'Login successful');
+        }
+      }
+    }
+
+    // (b) Tenant user — search all approved tenants for this email
+    // Finds VENDOR_OWNER, STAFF, or CUSTOMER logging in from the main page
+    const tenantUser = await prisma.user.findFirst({
+      where: {
+        email,
+        tenantId: { not: null },
+        isActive: true,
+        tenant: {
+          status:   'APPROVED',
+          isActive: true,
+        },
       },
-      'Login successful'
-    );
+      include: {
+        tenant: {
+          select: { id: true, name: true, slug: true, status: true, isActive: true, modules: true },
+        },
+      },
+    });
+
+    if (!tenantUser || !tenantUser.tenant) {
+      return unauthorized('Invalid email or password');
+    }
+
+    const passwordValid = await bcrypt.compare(password, tenantUser.passwordHash);
+    if (!passwordValid) return unauthorized('Invalid email or password');
+
+    const jwtPayload = await buildJwtPayload(tenantUser);
+    if (!jwtPayload) return unauthorized('No role assigned. Contact your administrator.');
+
+    const tenant = tenantUser.tenant;
+
+    return ok({
+      token:        signAccessToken(jwtPayload),
+      refreshToken: signRefreshToken(tenantUser.id),
+      user: {
+        id:          tenantUser.id,
+        name:        tenantUser.name,
+        email:       tenantUser.email,
+        image:       tenantUser.image,
+        role:        jwtPayload.role,
+        tenantId:    tenant.id,
+        permissions: jwtPayload.permissions,
+        tenantName:  tenant.name,
+        tenantSlug:  tenant.slug,
+        modules:     (tenant.modules as Record<string, boolean>) ?? {},
+      },
+    }, 'Login successful');
+
   } catch (error) {
     return serverError(error);
   }

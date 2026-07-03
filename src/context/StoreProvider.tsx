@@ -1,7 +1,7 @@
 'use client';
 // src/context/StoreProvider.tsx
-// Provides Redux store to the component tree.
-// Must be a client component — wraps the root layout body.
+// Wraps the entire app with the Redux store.
+// Must be at the root layout so store exists before any AuthProvider runs.
 
 import { Provider } from 'react-redux';
 import { store }    from '@/store';

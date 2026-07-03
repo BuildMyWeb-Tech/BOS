@@ -1,175 +1,174 @@
 // src/app/api/super-admin/vendors/[id]/approve/route.ts
 // PATCH /api/super-admin/vendors/[id]/approve
 //
-// Approves a pending vendor registration.
-// Super Admin only.
-//
-// Transaction (atomic — all succeed or all roll back):
-//   1. Update Tenant: status → APPROVED, isActive → true
-//   2. Create VENDOR_OWNER User with hashed password
-//   3. Assign VENDOR_OWNER system role to the new user
-//   4. Create TenantSettings with sensible defaults
-//   5. Update TenantSettings footerMessage (clear registration metadata)
-//   6. Create VENDOR_APPROVED in-app notification for the owner
+// Schema facts confirmed from prisma/schema.prisma:
+//   User.passwordHash          ✓ (not password)
+//   UserRoleAssign             ✓ (not userRole / userPermission)
+//   UserRoleAssign.userId      ✓
+//   UserRoleAssign.roleId      ✓
+//   UserRoleAssign.tenantId    ✓ (required field)
+//   NO UserPermission model    ✓ — permissions live on Role via RolePermission
+//   TenantSettings.cgst        ✓ (not cgstPercent)
+//   TenantSettings.sgst        ✓ (not sgstPercent)
+//   TenantSettings has NO currencySymbol field
 
 import { NextRequest } from 'next/server';
-import { authenticateSuperAdmin, ok, badRequest, notFound, serverError } from '@/lib/api-helpers';
-import { createVendorOwnerUser } from '@/lib/auth-db';
+import {
+  authenticate, ok, badRequest, forbidden, notFound, serverError,
+} from '@/lib/api-helpers';
 import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+type Params = { params: Promise<{ id: string }> };
+
+export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    // ── Step 1: Super Admin only ──────────────────────────────────
-    const auth = await authenticateSuperAdmin(request);
+    const auth = await authenticate(request);
     if (auth instanceof Response) return auth;
+    if (auth.role !== 'SUPER_ADMIN') return forbidden('Super Admin only');
 
     const { id: tenantId } = await params;
 
-    // ── Step 2: Fetch the tenant ──────────────────────────────────
-    const tenant = await prisma.tenant.findUnique({
-      where:  { id: tenantId },
-      select: {
-        id:      true,
-        name:    true,
-        status:  true,
-        email:   true,
-        settings: {
-          select: { id: true, footerMessage: true },
-        },
-      },
+    // ── 1. Load tenant ────────────────────────────────────────────
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant)                      return notFound('Vendor');
+    if (tenant.status === 'APPROVED') return badRequest('Vendor is already approved');
+
+    // ── 2. Pre-compute BEFORE the transaction ─────────────────────
+    // Role has @@unique([name, tenantId]) — system roles have tenantId: null
+    const ownerRole = await prisma.role.findFirst({
+      where: { name: 'VENDOR_OWNER', tenantId: null },
+    });
+    if (!ownerRole) return serverError(
+      new Error('VENDOR_OWNER role not found — run: npm run db:seed')
+    );
+
+    // Check if owner user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: { email: tenant.email, tenantId },
     });
 
-    if (!tenant) return notFound('Vendor');
-
-    if (tenant.status === 'APPROVED') {
-      return badRequest('Vendor is already approved');
+    // Hash password outside transaction — bcrypt takes ~300ms and burns TX time
+    let tempPassword:   string | null = null;
+    let hashedPassword: string | null = null;
+    if (!existingUser) {
+      tempPassword   = `BOS@${Math.random().toString(36).slice(2, 10)}`;
+      hashedPassword = await bcrypt.hash(tempPassword, 10);
+      console.info(`[Vendor Approve] Temp password for ${tenant.email}: ${tempPassword}`);
     }
 
-    if (tenant.status === 'SUSPENDED') {
-      return badRequest('Cannot approve a suspended vendor. Unsuspend first.');
-    }
-
-    // ── Step 3: Extract owner registration data ───────────────────
-    const settingsFooter = tenant.settings?.footerMessage ?? null;
-    let ownerData: {
-      ownerName:    string;
-      ownerEmail:   string;
-      ownerPassword: string;
-      ownerPhone:   string | null;
-    } | null = null;
-
-    if (settingsFooter) {
-      try {
-        const parsed = JSON.parse(settingsFooter);
-        if (parsed.__registration) {
-          ownerData = {
-            ownerName:     parsed.ownerName,
-            ownerEmail:    parsed.ownerEmail,
-            ownerPassword: parsed.ownerPassword,
-            ownerPhone:    parsed.ownerPhone ?? null,
-          };
-        }
-      } catch {
-        // Not JSON metadata
-      }
-    }
-
-    if (!ownerData) {
-      return badRequest(
-        'Registration data not found for this vendor. The registration may be malformed.'
-      );
-    }
-
-    // ── Step 4: Run approval transaction ─────────────────────────
+    // ── 3. Transaction with 30s timeout ──────────────────────────
     const result = await prisma.$transaction(async (tx) => {
-      // 4a. Activate the tenant
-      const updatedTenant = await tx.tenant.update({
+
+      // 3a. Approve the tenant
+      await tx.tenant.update({
         where: { id: tenantId },
         data:  { status: 'APPROVED', isActive: true },
-        select: {
-          id:       true,
-          name:     true,
-          slug:     true,
-          email:    true,
-          modules:  true,
-          status:   true,
-          isActive: true,
-        },
       });
 
-      // 4b. Create VENDOR_OWNER user (hashes password inside)
-      const ownerUser = await createVendorOwnerUser(tx, {
-        name:     ownerData!.ownerName,
-        email:    ownerData!.ownerEmail,
-        password: ownerData!.ownerPassword,
-        phone:    ownerData!.ownerPhone,
-        tenantId,
-      });
-
-      // 4c. Create TenantSettings with defaults (clear registration metadata)
-      if (tenant.settings?.id) {
-        await tx.tenantSettings.update({
-          where: { id: tenant.settings.id },
-          data:  {
-            footerMessage:  'Thank you for choosing us!',
-            gstNumber:      null,
-            taxType:        'SINGLE',
-            taxPercent:     18,
-            cgst:           9,
-            sgst:           9,
-            currency:       'INR',
-            showStoreName:  true,
-            showGST:        true,
-            defaultLowStock: 10,
+      // 3b. Create or reactivate the owner user
+      let ownerUser = existingUser;
+      if (!ownerUser) {
+        ownerUser = await tx.user.create({
+          data: {
+            tenantId,
+            name:         tenant.name + ' Owner',
+            email:        tenant.email,
+            passwordHash: hashedPassword!,   // ✓ matches User.passwordHash
+            isActive:     true,
           },
         });
       } else {
+        await tx.user.update({
+          where: { id: ownerUser.id },
+          data:  { isActive: true },
+        });
+      }
+
+      // 3c. Assign VENDOR_OWNER role via UserRoleAssign
+      // Schema: model UserRoleAssign { userId, roleId, tenantId (required) }
+      const existingAssign = await tx.userRoleAssign.findFirst({
+        where: { userId: ownerUser.id, roleId: ownerRole.id },
+      });
+      if (!existingAssign) {
+        await tx.userRoleAssign.create({
+          data: {
+            userId:   ownerUser.id,
+            roleId:   ownerRole.id,
+            tenantId,            // required field on UserRoleAssign
+          },
+        });
+      }
+
+      // 3d. Default slot config (booking module only)
+      const modules = tenant.modules as Record<string, boolean>;
+      if (modules.booking) {
+        const existingSlot = await tx.slotConfig.findUnique({ where: { tenantId } });
+        if (!existingSlot) {
+          await tx.slotConfig.create({
+            data: {
+              tenantId,
+              slotStartTime:          '09:00',
+              slotEndTime:            '18:00',
+              slotDuration:           30,
+              breakEnabled:           false,
+              breakStartTime:         null,
+              breakEndTime:           null,
+              daysOpen:               ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+              maxAdvanceBookingDays:  30,
+              minBookingHoursBefore:  2,
+              allowRescheduling:      true,
+              rescheduleHoursBefore:  24,
+              advancePaymentRequired: true,
+              advancePaymentPercent:  100,
+            },
+          });
+        }
+      }
+
+      // 3e. Default tenant settings
+      // Schema fields: cgst, sgst (not cgstPercent/sgstPercent)
+      // No currencySymbol field on TenantSettings
+      const existingSettings = await tx.tenantSettings.findUnique({ where: { tenantId } });
+      if (!existingSettings) {
         await tx.tenantSettings.create({
           data: {
             tenantId,
-            footerMessage:  'Thank you for choosing us!',
+            taxType:        'SINGLE',
+            taxPercent:     18,
+            cgst:           9,      // ✓ matches TenantSettings.cgst
+            sgst:           9,      // ✓ matches TenantSettings.sgst
+            currency:       'INR',
             defaultLowStock: 10,
           },
         });
       }
 
-      // 4d. Create VENDOR_APPROVED in-app notification
-      await tx.notification.create({
+      return { ownerUserId: ownerUser.id };
+
+    }, { timeout: 30_000 });
+
+    // ── 4. Notification OUTSIDE transaction (non-critical) ────────
+    try {
+      await prisma.notification.create({
         data: {
           tenantId,
-          userId:  ownerUser.id,
+          userId:  result.ownerUserId,
           type:    'VENDOR_APPROVED',
-          title:   'Your business has been approved! 🎉',
-          message: `Welcome to BOS! Your business "${updatedTenant.name}" is now live. Log in to set up your account.`,
-          isRead:  false,
+          title:   'Your business is approved! 🎉',
+          message: `Welcome to BOS! "${tenant.name}" has been approved. ` +
+                   `Log in at /login with ${tenant.email}.`,
         },
       });
-
-      return { tenant: updatedTenant, owner: ownerUser };
-    });
+    } catch (e) {
+      console.warn('[Vendor Approve] Notification skipped (non-critical):', e);
+    }
 
     return ok(
-      {
-        vendor: {
-          id:       result.tenant.id,
-          name:     result.tenant.name,
-          slug:     result.tenant.slug,
-          status:   result.tenant.status,
-          isActive: result.tenant.isActive,
-          modules:  result.tenant.modules,
-          owner: {
-            id:    result.owner.id,
-            name:  result.owner.name,
-            email: result.owner.email,
-          },
-          loginUrl: `http://${result.tenant.slug}.localhost:3000/login`,
-        },
-      },
-      `Vendor "${result.tenant.name}" approved successfully`
+      { tenantId, status: 'APPROVED', ownerEmail: tenant.email, tempPassword },
+      `${tenant.name} approved. Vendor logs in with ${tenant.email}.`
     );
+
   } catch (error) {
     return serverError(error);
   }
