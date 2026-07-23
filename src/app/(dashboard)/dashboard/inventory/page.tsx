@@ -1,5 +1,7 @@
 'use client';
 // src/app/(dashboard)/dashboard/inventory/page.tsx
+// FIX: API returns { items: [], pagination: {}, summary: {} }
+// Was reading data?.inventory (undefined). Now reads data?.items with fallback.
 
 import Link        from 'next/link';
 import { Package, AlertTriangle, XCircle, Plus, ArrowRight } from 'lucide-react';
@@ -12,12 +14,15 @@ import { useFetch } from '@/hooks/useFetch';
 import type { InventoryListItem } from '@/types';
 
 export default function InventoryPage() {
-  const { data, loading } = useFetch<{ inventory: InventoryListItem[]; total: number }>('/api/inventory');
-  const items = data?.inventory ?? [];
+  // FIX: use any to handle both response shapes then extract correctly
+  const { data, loading } = useFetch<any>('/api/inventory');
 
-  const lowStock  = items.filter(i => i.stockStatus === 'low_stock');
-  const outOfStock = items.filter(i => i.stockStatus === 'out_of_stock');
-  const inStock    = items.filter(i => i.stockStatus === 'in_stock');
+  // Handle { items, pagination, summary } OR { inventory, total }
+  const items: InventoryListItem[] = data?.items ?? data?.inventory ?? [];
+
+  const lowStock   = items.filter((i: InventoryListItem) => i.stockStatus === 'low_stock');
+  const outOfStock = items.filter((i: InventoryListItem) => i.stockStatus === 'out_of_stock');
+  const inStock    = items.filter((i: InventoryListItem) => i.stockStatus === 'in_stock');
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -62,7 +67,7 @@ export default function InventoryPage() {
                 </h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {outOfStock.map(i => (
+                {outOfStock.map((i: InventoryListItem) => (
                   <Link key={i.productId} href={`/dashboard/inventory/products/${i.productId}`}
                     className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors">
                     {i.productName}
@@ -77,7 +82,7 @@ export default function InventoryPage() {
                 <AlertTriangle size={14} /> {lowStock.length} product{lowStock.length !== 1 ? 's' : ''} running low
               </h3>
               <div className="flex flex-wrap gap-2">
-                {lowStock.map(i => (
+                {lowStock.map((i: InventoryListItem) => (
                   <Link key={i.productId} href={`/dashboard/inventory/products/${i.productId}`}
                     className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors">
                     {i.productName} ({i.quantity} left)
@@ -98,7 +103,15 @@ export default function InventoryPage() {
       </div>
 
       {loading ? <Skeleton className="h-48 rounded-xl" />
-      : (
+      : items.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+          <Package size={32} className="text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">No products yet.</p>
+          <Link href="/dashboard/inventory/products/new" className="mt-3 inline-block text-sm text-indigo-600 hover:underline">
+            Add your first product
+          </Link>
+        </div>
+      ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -110,7 +123,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {items.slice(0, 20).map(i => (
+                {items.slice(0, 20).map((i: InventoryListItem) => (
                   <tr key={i.productId} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-3">
                       <Link href={`/dashboard/inventory/products/${i.productId}`}

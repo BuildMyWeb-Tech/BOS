@@ -1,5 +1,7 @@
 'use client';
 // src/app/(dashboard)/dashboard/services/new/page.tsx
+// Fixed: resources are fetched and shown in the "Assign resource" section
+// (separate from service categories which are for grouping services).
 
 import { useState }     from 'react';
 import { useRouter }    from 'next/navigation';
@@ -11,20 +13,26 @@ import FormField  from '@/components/ui/FormField';
 import Button     from '@/components/ui/Button';
 import { useFetch }          from '@/hooks/useFetch';
 import { apiCall, ApiError } from '@/lib/apiClient';
-import type { ServiceCategory } from '@/types';
+import type { ServiceCategory, Resource } from '@/types';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export default function NewServicePage() {
   const router = useRouter();
-  const { data } = useFetch<{ categories: ServiceCategory[] }>('/api/services/categories');
-  const categories = data?.categories ?? [];
+
+  const { data: catData }      = useFetch<{ categories: ServiceCategory[] }>('/api/services/categories');
+  // FIX: fetch resources so vendor can assign one to this service
+  const { data: resourceData } = useFetch<{ resources: Resource[] }>('/api/resources?includeInactive=false');
+
+  const categories = catData?.categories ?? [];
+  const resources  = resourceData?.resources ?? [];
 
   const [name,        setName]        = useState('');
   const [description, setDescription] = useState('');
   const [duration,    setDuration]    = useState(60);
   const [price,       setPrice]       = useState('');
   const [categoryId,  setCategoryId]  = useState('');
+  const [resourceId,  setResourceId]  = useState('');   // NEW
   const [image,       setImage]       = useState('');
   const [saving,      setSaving]      = useState(false);
   const [errors,      setErrors]      = useState<Record<string,string>>({});
@@ -48,8 +56,9 @@ export default function NewServicePage() {
         description: description || undefined,
         duration,
         price:       parseFloat(price),
-        categoryId:  categoryId || undefined,
-        image:       image      || undefined,
+        categoryId:  categoryId  || undefined,
+        resourceId:  resourceId  || undefined,   // NEW — link a resource
+        image:       image       || undefined,
       });
       toast.success(`${name.trim()} added`);
       router.push('/dashboard/services');
@@ -89,13 +98,37 @@ export default function NewServicePage() {
                 placeholder="599"
                 className={`form-input ${errors.price ? 'error' : ''}`} />
             </FormField>
-            <FormField label="Category">
+            <FormField label="Category" hint="Group services for filtering.">
               <select value={categoryId} onChange={e => setCategoryId(e.target.value)} className="form-input">
                 <option value="">No category</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
           </div>
+
+          {/* FIX — Resource assignment */}
+          <FormField
+            label="Assign resource"
+            hint={
+              resources.length === 0
+                ? 'No resources yet — create courts, rooms, or tables in Resources first.'
+                : 'Optional — the court, room, or equipment used for this service.'
+            }
+          >
+            <select
+              value={resourceId}
+              onChange={e => setResourceId(e.target.value)}
+              className="form-input"
+              disabled={resources.length === 0}
+            >
+              <option value="">No resource assigned</option>
+              {resources.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.type})
+                </option>
+              ))}
+            </select>
+          </FormField>
 
           <FormField label="Duration" required>
             <div className="flex flex-wrap gap-2">

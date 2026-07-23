@@ -1,5 +1,7 @@
 'use client';
 // src/app/(dashboard)/dashboard/inventory/products/page.tsx
+// FIX: API returns { items: [], pagination: {} } — was reading data?.products (wrong key).
+// Now reads data?.items with fallback to data?.products for backward compatibility.
 
 import { useState } from 'react';
 import Link         from 'next/link';
@@ -41,14 +43,17 @@ export default function ProductListPage() {
     catFilter ? `categoryId=${catFilter}` : '',
   ].filter(Boolean).join('&');
 
-  const { data, loading, error } = useFetch<{ products: ProductListItem[]; total: number }>(
+  // FIX: handle both { items, pagination } and { products, total } response shapes
+  const { data, loading, error } = useFetch<any>(
     `/api/products?limit=100${query ? `&${query}` : ''}`,
     { deps: [stockFilter, catFilter] }
   );
 
-  const products = data?.products ?? [];
+  const products: ProductListItem[] = data?.items ?? data?.products ?? [];
+  const total: number = data?.pagination?.total ?? data?.total ?? products.length;
+
   const filtered = search
-    ? products.filter(p =>
+    ? products.filter((p: ProductListItem) =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.sku ?? '').toLowerCase().includes(search.toLowerCase())
       )
@@ -58,7 +63,7 @@ export default function ProductListPage() {
     <div className="max-w-6xl mx-auto">
       <PageHeader
         title="Products"
-        subtitle={`${data?.total ?? 0} total products`}
+        subtitle={`${total} total products`}
         action={
           <Link href="/dashboard/inventory/products/new">
             <Button size="sm"><Plus size={14} /> Add product</Button>
@@ -78,11 +83,13 @@ export default function ProductListPage() {
           ))}
         </div>
         {/* Category filter */}
-        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-          className="form-input text-sm" style={{ width: 160 }}>
-          <option value="">All categories</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {categories.length > 0 && (
+          <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+            className="form-input text-sm" style={{ width: 160 }}>
+            <option value="">All categories</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
         {/* Search */}
         <div className="w-full sm:max-w-xs">
           <SearchInput value={search} onChange={setSearch} placeholder="Search name or SKU…" />
@@ -110,7 +117,7 @@ export default function ProductListPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(p => (
+                {filtered.map((p: ProductListItem) => (
                   <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-900">{p.name}</p>
@@ -121,7 +128,7 @@ export default function ProductListPage() {
                     <td className="px-5 py-4 font-medium text-gray-900">₹{p.mrp.toLocaleString('en-IN')}</td>
                     <td className="px-5 py-4">
                       <span className={`text-sm font-semibold ${
-                        p.totalStock === 0 ? 'text-red-600' : p.totalStock <= p.lowStock ? 'text-amber-600' : 'text-gray-900'
+                        p.totalStock === 0 ? 'text-red-600' : p.totalStock <= (p.lowStock ?? 0) ? 'text-amber-600' : 'text-gray-900'
                       }`}>{p.totalStock}</span>
                     </td>
                     <td className="px-5 py-4">

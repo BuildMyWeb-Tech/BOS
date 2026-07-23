@@ -1,5 +1,6 @@
 'use client';
 // src/app/(dashboard)/dashboard/services/page.tsx
+// Fixed: shows resource name column in table; active toggle works.
 
 import { useState, useCallback } from 'react';
 import Link  from 'next/link';
@@ -23,9 +24,12 @@ export default function ServicesPage() {
     '/api/services?limit=100'
   );
 
-  const services = data?.services ?? [];
+  // FIX: API returns items[] (paginated). Support both shapes.
+  const services = (data as any)?.items ?? data?.services ?? [];
+  const total    = (data as any)?.pagination?.total ?? data?.total ?? 0;
+
   const filtered = search
-    ? services.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+    ? services.filter((s: Service) => s.name.toLowerCase().includes(search.toLowerCase()))
     : services;
 
   const handleToggle = useCallback(async (service: Service) => {
@@ -39,10 +43,10 @@ export default function ServicesPage() {
   }, [refetch]);
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <PageHeader
         title="Services"
-        subtitle={`${data?.total ?? 0} services`}
+        subtitle={`${total} services`}
         action={
           <Link href="/dashboard/services/new">
             <Button size="sm"><Plus size={14} /> Add service</Button>
@@ -56,7 +60,7 @@ export default function ServicesPage() {
         </div>
       </div>
 
-      {loading ? <SkeletonTable rows={5} columns={5} />
+      {loading ? <SkeletonTable rows={5} columns={6} />
       : error   ? <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{error}</div>
       : filtered.length === 0 ? (
         <EmptyState
@@ -71,20 +75,29 @@ export default function ServicesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {['Service', 'Category', 'Duration', 'Price', 'Status', ''].map(h => (
+                  {['Service', 'Category', 'Resource', 'Duration', 'Price', 'Status', ''].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(s => (
+                {filtered.map((s: Service) => (
                   <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-900">{s.name}</p>
                       {s.description && <p className="text-xs text-gray-400 truncate max-w-[200px]">{s.description}</p>}
                     </td>
+                    {/* Category */}
                     <td className="px-5 py-4 text-gray-600">
-                      {s.category?.name ?? <span className="text-gray-300">—</span>}
+                      {(s as any).category?.name ?? s.categoryName ?? <span className="text-gray-300">—</span>}
+                    </td>
+                    {/* FIX — Resource column */}
+                    <td className="px-5 py-4">
+                      {(s as any).resource ? (
+                        <Badge label={(s as any).resource.name} variant="brand" />
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-4 text-gray-600">{s.duration} min</td>
                     <td className="px-5 py-4 font-medium text-gray-900">₹{s.price.toLocaleString('en-IN')}</td>

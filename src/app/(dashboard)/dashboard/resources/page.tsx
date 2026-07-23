@@ -1,5 +1,8 @@
 'use client';
 // src/app/(dashboard)/dashboard/resources/page.tsx
+// FIX: Deactivated resources were disappearing because the API defaults to
+// isActive=true filter. Now passes includeInactive=true so all resources
+// always show; deactivated ones show an Inactive badge and remain in table.
 
 import { useState, useCallback } from 'react';
 import Link  from 'next/link';
@@ -23,11 +26,13 @@ const TYPE_LABELS: Record<string, string> = {
 export default function ResourcesPage() {
   const [search, setSearch] = useState('');
 
-  const { data, loading, error, refetch } = useFetch<{ resources: Resource[]; total: number }>(
-    '/api/resources?limit=100'
+  // FIX: pass includeInactive=true so deactivated resources stay in the table
+  const { data, loading, error, refetch } = useFetch<{ resources: Resource[]; total?: number }>(
+    '/api/resources?includeInactive=true'
   );
 
   const resources = data?.resources ?? [];
+  const total     = data?.total ?? resources.length;
   const filtered  = search
     ? resources.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
     : resources;
@@ -46,7 +51,7 @@ export default function ResourcesPage() {
     <div className="max-w-5xl mx-auto">
       <PageHeader
         title="Resources"
-        subtitle={`${data?.total ?? 0} resources — courts, rooms, tables, equipment`}
+        subtitle={`${total} resource${total !== 1 ? 's' : ''} — courts, rooms, tables, equipment`}
         action={
           <Link href="/dashboard/resources/new">
             <Button size="sm"><Plus size={14} /> Add resource</Button>
@@ -74,14 +79,15 @@ export default function ResourcesPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Resource', 'Type', 'Description', 'Status', ''].map(h => (
+                {['Resource', 'Type', 'Description', 'Bookings', 'Status', ''].map(h => (
                   <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={r.id}
+                  className={`hover:bg-gray-50/50 transition-colors ${!r.isActive ? 'opacity-60' : ''}`}>
                   <td className="px-5 py-4 font-medium text-gray-900">{r.name}</td>
                   <td className="px-5 py-4">
                     <Badge label={TYPE_LABELS[r.type] ?? r.type} variant="brand" />
@@ -89,13 +95,20 @@ export default function ResourcesPage() {
                   <td className="px-5 py-4 text-gray-400 text-xs max-w-[200px]">
                     <span className="truncate block">{r.description ?? '—'}</span>
                   </td>
+                  <td className="px-5 py-4 text-gray-500 text-sm">
+                    {r.bookingCount ?? 0}
+                  </td>
                   <td className="px-5 py-4">
+                    {/* FIX: Toggle stays in table; badge flips between Active ↔ Inactive */}
                     <button onClick={() => handleToggle(r)} className="flex items-center gap-1.5 group">
                       {r.isActive
                         ? <ToggleRight size={20} className="text-emerald-500 group-hover:text-emerald-600" />
                         : <ToggleLeft  size={20} className="text-gray-300 group-hover:text-gray-400"   />
                       }
-                      <Badge label={r.isActive ? 'Active' : 'Inactive'} variant={r.isActive ? 'success' : 'neutral'} />
+                      <Badge
+                        label={r.isActive ? 'Active' : 'Inactive'}
+                        variant={r.isActive ? 'success' : 'neutral'}
+                      />
                     </button>
                   </td>
                   <td className="px-5 py-4">

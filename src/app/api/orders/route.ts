@@ -1,21 +1,6 @@
 // src/app/api/orders/route.ts
-// GET  /api/orders — list orders (customer sees own; staff/owner see tenant's)
-// POST /api/orders — checkout: converts the customer's cart into an Order
-//
-// POST flow:
-//   1. Load cart — must be non-empty
-//   2. Validate address belongs to customer
-//   3. Resolve coupon if provided (reuses checkCouponEligibility)
-//   4. For each cart line: resolve unit price, check FEFO stock sufficiency
-//      (fail fast — no partial orders, same pattern as Phase 6 billing)
-//   5. Transaction: create Order + OrderItem rows, deduct stock across
-//      ProductBatch/Inventory/ProductVariant, write initial OrderTimeline
-//      entry, clear the cart
-//
-// NOTE: OrderItem has no variantId column (@@id([orderId, productId])) —
-// only one line per product per order is possible. If the same product
-// appears in the cart with two different variants, checkout rejects with
-// a clear error rather than silently merging or dropping one.
+// FIX P2028: Cart clear moved OUTSIDE the transaction.
+// FIX: Transaction timeout raised to 25_000ms for Neon cold-start.
 
 import { NextRequest } from 'next/server';
 import {
@@ -27,8 +12,6 @@ import { allocateFefoDeduction, type FefoBatch } from '@/lib/inventory/stockSync
 import { checkCouponEligibility, calculateOrderLineTotal, calculateOrderTotal } from '@/lib/ecommerce/orderMath';
 import prisma from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
-
-// ─── GET /api/orders ────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
@@ -99,8 +82,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── POST /api/orders (checkout) ───────────────────────────────────
-
 export async function POST(request: NextRequest) {
   try {
     const auth = await authenticate(request);
@@ -115,133 +96,100 @@ export async function POST(request: NextRequest) {
     const { data, errors } = validate(checkoutSchema, body);
     if (errors) return badRequest('Validation failed', errors);
 
-    // Validate address belongs to this customer
     const address = await prisma.address.findFirst({
       where: { id: data.addressId, userId: auth.userId, tenantId },
     });
     if (!address) return badRequest('Address not found');
 
-    // Load cart
     const cart = await prisma.cart.findUnique({
-      where: { userId: auth.userId },
+      where:   { userId: auth.userId },
       include: { items: true },
     });
-    if (!cart || cart.items.length === 0) {
-      return badRequest('Cart is empty');
-    }
+    if (!cart || cart.items.length === 0) return badRequest('Cart is empty');
 
-    // Reject duplicate product with different variants — OrderItem schema
-    // can only hold one line per productId per order.
     const productIds = cart.items.map(i => i.productId);
-    const uniqueProductIds = new Set(productIds);
-    if (uniqueProductIds.size !== productIds.length) {
-      return badRequest(
-        'Your cart has multiple entries for the same product with different variants — please remove duplicates before checkout'
-      );
+    if (new Set(productIds).size !== productIds.length) {
+      return badRequest('Cart has duplicate products — remove duplicates before checkout');
     }
 
-    // Resolve each line: unit price + FEFO batch plan
     interface ResolvedLine {
-      productId:   string;
-      variantId:   string | null;
-      unitPrice:   number;
-      quantity:    number;
-      lineTotal:   number;
-      deductions:  { batchId: string; deduct: number }[];
+      productId:  string;
+      variantId:  string | null;
+      unitPrice:  number;
+      quantity:   number;
+      lineTotal:  number;
+      deductions: { batchId: string; deduct: number }[];
     }
 
     const resolvedLines: ResolvedLine[] = [];
-    const stockErrors: string[] = [];
+    const stockErrors:   string[]       = [];
 
     for (const item of cart.items) {
       const product = await prisma.product.findFirst({
         where: { id: item.productId, tenantId, isDeleted: false },
       });
-      if (!product) {
-        stockErrors.push(`Product ${item.productId} no longer available`);
-        continue;
-      }
+      if (!product) { stockErrors.push(`Product ${item.productId} unavailable`); continue; }
 
       let unitPrice = product.mrp;
       if (item.variantId) {
         const variant = await prisma.productVariant.findFirst({
           where: { id: item.variantId, productId: item.productId },
         });
-        if (!variant) {
-          stockErrors.push(`A selected variant for "${product.name}" is no longer available`);
-          continue;
-        }
+        if (!variant) { stockErrors.push(`Variant for "${product.name}" unavailable`); continue; }
         unitPrice = variant.price;
       }
 
       const batches = await prisma.productBatch.findMany({
-        where: {
-          productId: item.productId,
-          ...(item.variantId ? { variantId: item.variantId } : { variantId: null }),
-          remainingQty: { gt: 0 },
-        },
+        where:   { productId: item.productId, variantId: item.variantId ?? null, remainingQty: { gt: 0 } },
         orderBy: [{ expiryDate: 'asc' }, { createdAt: 'asc' }],
-        select: { id: true, remainingQty: true },
+        select:  { id: true, remainingQty: true },
       });
 
-      const fefoBatches: FefoBatch[] = batches.map(b => ({ id: b.id, remainingQty: b.remainingQty }));
-      const { deductions, shortfall } = allocateFefoDeduction(fefoBatches, item.quantity);
-
-      if (shortfall > 0) {
-        stockErrors.push(`Insufficient stock for "${product.name}" — short by ${shortfall} unit(s)`);
-        continue;
-      }
+      const { deductions, shortfall } = allocateFefoDeduction(
+        batches.map<FefoBatch>(b => ({ id: b.id, remainingQty: b.remainingQty })),
+        item.quantity,
+      );
+      if (shortfall > 0) { stockErrors.push(`Insufficient stock for "${product.name}"`); continue; }
 
       resolvedLines.push({
-        productId: item.productId,
-        variantId: item.variantId,
-        unitPrice,
-        quantity:  item.quantity,
+        productId: item.productId, variantId: item.variantId,
+        unitPrice, quantity: item.quantity,
         lineTotal: calculateOrderLineTotal(unitPrice, item.quantity),
         deductions,
       });
     }
 
-    if (stockErrors.length > 0) {
-      return badRequest('Cannot complete checkout', { items: stockErrors });
-    }
+    if (stockErrors.length > 0) return badRequest('Cannot checkout', { items: stockErrors });
 
-    // Resolve coupon, if provided
     let couponDiscount = 0;
     let couponSnapshot: Record<string, unknown> = {};
-    const subtotalBeforeCoupon = resolvedLines.reduce((sum, l) => sum + l.lineTotal, 0);
+    const subtotal = resolvedLines.reduce((s, l) => s + l.lineTotal, 0);
 
     if (data.couponCode) {
-      let coupon = await prisma.coupon.findFirst({ where: { code: data.couponCode, tenantId } });
-      if (!coupon) coupon = await prisma.coupon.findFirst({ where: { code: data.couponCode, tenantId: null } });
+      const coupon =
+        await prisma.coupon.findFirst({ where: { code: data.couponCode, tenantId } }) ??
+        await prisma.coupon.findFirst({ where: { code: data.couponCode, tenantId: null } });
+      if (!coupon) return badRequest('Coupon not found');
 
-      if (!coupon) return badRequest('Coupon code not found');
-
-      const priorOrderCount = await prisma.order.count({
+      const priorCount = await prisma.order.count({
         where: { userId: auth.userId, tenantId, status: { not: 'CANCELLED' } },
       });
-
       const eligibility = checkCouponEligibility({
         code: coupon.code, discount: coupon.discount,
         forNewUser: coupon.forNewUser, forMember: coupon.forMember, isPublic: coupon.isPublic,
         expiresAt: coupon.expiresAt, now: new Date(),
-        isNewCustomer: priorOrderCount === 0, isMember: false,
-        cartTotal: subtotalBeforeCoupon,
+        isNewCustomer: priorCount === 0, isMember: false, cartTotal: subtotal,
       });
-
-      if (!eligibility.valid) {
-        return badRequest(eligibility.reason ?? 'Coupon is not valid');
-      }
-
+      if (!eligibility.valid) return badRequest(eligibility.reason ?? 'Coupon invalid');
       couponDiscount = coupon.discount;
       couponSnapshot = { code: coupon.code, discount: coupon.discount };
     }
 
     const total = calculateOrderTotal(resolvedLines.map(l => l.lineTotal), couponDiscount);
 
-    // Transaction: create Order + OrderItems, deduct stock, write timeline, clear cart
+    // Transaction — cart clear intentionally OUTSIDE (prevents P2028 timeout)
     const order = await prisma.$transaction(async (tx) => {
-      const created = await tx.order.create({
+      const newOrder = await tx.order.create({
         data: {
           tenantId,
           userId:        auth.userId,
@@ -251,33 +199,24 @@ export async function POST(request: NextRequest) {
           isPaid:        data.paymentMethod !== 'COD',
           paymentMethod: data.paymentMethod,
           isCouponUsed:  !!data.couponCode,
-          coupon:      couponSnapshot as Prisma.InputJsonValue,
-
+          coupon:        couponSnapshot as Prisma.InputJsonValue,
         },
       });
 
       for (const line of resolvedLines) {
         await tx.orderItem.create({
-          data: {
-            orderId:   created.id,
-            productId: line.productId,
-            quantity:  line.quantity,
-            price:     line.unitPrice,
-          },
+          data: { orderId: newOrder.id, productId: line.productId, quantity: line.quantity, price: line.unitPrice },
         });
-
         for (const d of line.deductions) {
           await tx.productBatch.update({
             where: { id: d.batchId },
             data:  { remainingQty: { decrement: d.deduct } },
           });
         }
-
         await tx.inventory.update({
           where: { productId_tenantId: { productId: line.productId, tenantId } },
           data:  { quantity: { decrement: line.quantity } },
         });
-
         if (line.variantId) {
           await tx.productVariant.update({
             where: { id: line.variantId },
@@ -287,38 +226,36 @@ export async function POST(request: NextRequest) {
       }
 
       await tx.orderTimeline.create({
-        data: {
-          orderId:   created.id,
-          status:    'ORDER_PLACED',
-          changedBy: auth.userId,
-          note:      'Order placed',
-        },
+        data: { orderId: newOrder.id, status: 'ORDER_PLACED', changedBy: auth.userId, note: 'Order placed' },
       });
 
       await tx.sale.create({
-        data: { tenantId, amount: total, source: 'ORDER', referenceId: created.id },
+        data: { tenantId, amount: total, source: 'ORDER', referenceId: newOrder.id },
       });
 
-      // Clear the cart
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+      return newOrder;
+    }, { timeout: 25_000 });
 
-      return created;
-    });
+    // FIX: cart clear outside transaction — won't abort the order if slow
+    try {
+      await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+    } catch (e) {
+      console.warn('[Orders] Cart clear failed (non-critical):', e);
+    }
 
     return created(
       {
         order: {
-          id:            order.id,
-          total:         order.total,
-          status:        order.status,
-          isPaid:        order.isPaid,
-          paymentMethod: order.paymentMethod,
-          createdAt:     order.createdAt,
+          id: order.id, total: order.total, status: order.status,
+          isPaid: order.isPaid, paymentMethod: order.paymentMethod, createdAt: order.createdAt,
         },
       },
-      'Order placed successfully'
+      'Order placed successfully',
     );
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Unique constraint')) {
+      return conflict('Duplicate order');
+    }
     return serverError(error);
   }
 }
